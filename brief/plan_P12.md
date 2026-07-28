@@ -1,5 +1,9 @@
 # Plan de projet — P12 : Prédiction de rendements & recommandation de culture
 
+> **v3 — révisé après l'audit du dataset B** (notebook `EDA CYPD.ipynb`).
+> Le dataset B s'est révélé bien plus abîmé que la v2 ne le supposait : doublons, pays majeurs perdus
+> sur un problème de nommage, R² surestimé par fuite de données. Une 3ᵉ source a été ajoutée.
+>
 > **v2 — révisé après audit factuel des données** (scripts de vérif : voir §12).
 > Tout ce qui était « supposé » en v1 a été testé. Trois hypothèses de la v1 étaient fausses,
 > dont une qui **casse la fonctionnalité centrale du projet** (§2). Ce plan intègre les corrections.
@@ -76,7 +80,19 @@ Yield ≈ 0,005·Rainfall + 0,02·Temperature + 1,5·Fertilizer + 1,2·Irrigatio
 | Fichiers bruts | `yield.csv` (56 717 l., 212 pays, 1961–2016) · `rainfall.csv` (6 727, 217 pays, 1985–2017) · `pesticides.csv` (4 349, 168 pays, 1990–2016) · `temp.csv` (71 311, 137 pays, **1743**–2013) |
 | Pièges des bruts | `rainfall.csv` : colonne `" Area"` **avec espace initial** + **780 valeurs non numériques** (`..`) ; `temp.csv` : colonnes `year`/`country` + 2 547 NaN |
 
-✅ **Reconstruction validée** : `yield ⋈ rainfall ⋈ pesticides ⋈ temp` en jointures internes sur `(Area, Year)` reproduit **exactement 28 242 lignes / 101 pays / 1990–2013**, 0 NaN. Le périmètre de `yield_df.csv` est le simple produit des intersections. Le notebook `02` est donc un livrable **sûr** — la validation tombera juste.
+✅ **Reconstruction validée** : `yield ⋈ rainfall ⋈ pesticides ⋈ temp` en jointures internes sur `(Area, Year)` reproduit **exactement 28 242 lignes / 101 pays / 1990–2013**, 0 NaN. Le périmètre de `yield_df.csv` est le simple produit des intersections.
+
+**❌ Correction v3 — mais ce fichier ne doit surtout pas être utilisé tel quel.** L'audit a mis au jour trois défauts, chacun mesuré :
+
+| # | Défaut | Mesure |
+|---|---|---|
+| 1 | **`temp.csv` est au niveau station, pas pays** (52 relevés pour les USA en 1925, de 5,2 à 23,3 °C). La jointure a dupliqué chaque ligne de rendement autant de fois qu'il y a de relevés. | 28 242 lignes pour **13 130 combinaisons uniques** (Area, Item, Year) → **54 % de doublons**, dont 2 310 lignes strictement identiques |
+| 2 | **Deux conventions de nommage** : `yield.csv` et `pesticides.csv` en noms FAO (`United States of America`), `rainfall.csv` et `temp.csv` en noms courants (`United States`). | **USA, Chine et Russie absents** du fichier livré. Les USA ont pourtant le rendement le plus élevé du jeu (121 738 hg/ha contre ~70 500 en moyenne) : leur exclusion biaise tout vers le bas |
+| 3 | `" Area"` avec espace initial, valeurs `".."` non numériques, colonnes `year`/`country` en minuscules, fichiers en UTF-8 (`Türkiye` illisible en latin-1) | échecs de fusion silencieux |
+
+**Périmètre corrigé retenu : 14 371 lignes, 109 pays, 1990–2013, aucun NaN** (`B_corrected`). Moins de lignes que le fichier livré, mais **plus d'information** : une ligne par (pays, culture, année) et 8 pays de plus.
+
+**➕ 3ᵉ source ajoutée — FAOSTAT *Land Use*** (`data/LandUse/`). `pesticides_tonnes` est un tonnage national qui mélange taille du pays et intensité des pratiques : la France « consomme » 84 000 t/an contre 46 000 t/an pour l'Inde. Rapporté à la surface `Cropland`, on obtient une **intensité en kg/ha** agronomiquement juste (Inde 0,27 · USA 2,36 · France 4,34 · Belgique 7,81) — et surtout une grandeur que l'utilisateur de l'application peut renseigner. Couverture **100 %** après extension de la table de noms. Jeu final : **`B_enriched`**, 14 371 × 10.
 
 ### Le nœud A ↔ B
 
@@ -150,6 +166,17 @@ Modèles HGB sur B, mêmes conditions :
 | climat + Item + Year | 0,955 | 1,80 t/ha |
 | climat + Item + Year + Area | 0,979 | 1,24 t/ha |
 
+> **⚠️ Correction v3 — ces chiffres sont surestimés par une fuite de données.** Ils ont été produits sur `yield_df.csv` non dédoublonné : la même combinaison (pays, culture, année) se retrouvait des deux côtés du split, le modèle recopiait. Sur données propres :
+>
+> | Protocole | R² |
+> |---|---|
+> | split aléatoire sur le fichier livré | 0,954 |
+> | split groupé, sans fuite de doublon | 0,946 |
+> | **déduplication + split aléatoire** | **0,928** |
+> | **pays jamais vus à l'entraînement** | **0,543** |
+>
+> Le second chiffre est le plus instructif. La pluviométrie étant **constante par pays** (100 % de sa variance est inter-pays, 109 pays sur 109), le triplet (pluie, pesticides, température) fonctionne comme une **empreinte digitale du pays** que le modèle mémorise. C'est le chiffre à annoncer en soutenance quand on demandera la robustesse.
+
 `Item` fait passer le R² de 0,13 à 0,95 : **c'est la variable structurante**. Et le classement **réagit au contexte** (vraies interactions culture × climat) :
 
 ```
@@ -192,13 +219,14 @@ Il est produit dans tous les cas : A enrichi des agrégats de B par culture (ren
 | Notebook | Rôle | Sortie |
 |---|---|---|
 | `01_eda_datasetA.ipynb` | EDA + cleaning A. **Inclut l'audit de signal du §2** (moyennes par modalité, permutation importance, ACP) — c'est le résultat le plus important du projet. Échantillonnage pour les plots. | `A_clean.parquet` |
-| `02_eda_datasetB.ipynb` | EDA B + **reconstruction de la fusion FAO** (4 CSV) validée contre `yield_df.csv` (28 242 l. attendues). Conversion hg/ha → t/ha. | `B_clean.parquet` |
+| `02_eda_datasetB.ipynb` | ✅ **fait** (`EDA CYPD.ipynb`). Audit des 5 fichiers, reconstruction de la fusion, **correction** des 3 défauts, intégration du Land Use, conversion hg/ha → t/ha. L'objectif n'est plus de reproduire `yield_df.csv` mais de le **corriger**. | `B_original` / `B_corrected` / `B_enriched` |
 | `03_fusion.ipynb` | Mapping des noms de cultures, agrégats B par culture, jointure crop-level A←B, **ACP** (A *et* B en contraste). | `dataset_unifie.csv` |
 | `04_feature_engineering.ipynb` | Encodage, features dérivées, **DF model-agnostic** (pas de scaling ici). | `train_ready.parquet` + `summary_choix.md` |
 
 **Décisions Étape 1 :**
 - **Parquet** en intermédiaire (90 Mo de CSV) ; CSV uniquement pour le livrable imposé.
-- **231 rendements négatifs** dans A → décision à documenter (clip à 0 recommandé : c'est la queue gaussienne du bruit du générateur, pas une erreur de saisie). 0,023 % des lignes.
+- **231 rendements négatifs** dans A → **ne pas les supprimer et ne pas modifier la cible**. C'est la queue gauche du bruit gaussien du générateur, pas une erreur de saisie, et elles sont toutes dans le segment sans engrais ni irrigation — les retirer tronquerait la queue basse précisément dans le segment le plus utile à la recommandation. Le clip à 0 se fait **à la sortie du modèle, côté API**. 0,023 % des lignes.
+- **Aucun outlier à traiter dans A** : la règle 3 × IQR n'en détecte **aucun**, et |z| > 3 en trouve 37 au lieu des 2 700 attendus sous normalité. La cible est bornée par construction (somme d'uniformes).
 - **Pièges des bruts B** à traiter explicitement : `" Area"` avec espace, `to_numeric(errors="coerce")` sur rainfall (780 `..`), renommage `year`/`country` de `temp.csv`.
 - **ACP — cadrage du narratif.** Le brief l'exige pour « identifier les variables clés ». Résultat mesuré sur A : `[0,3342 ; 0,3334 ; 0,3324]`, scree plot parfaitement plat, **zéro compression possible**. Ce n'est pas un échec, c'est un **diagnostic** : on montre l'ACP, on conclut que les variables sont orthogonales par construction, et on identifie les variables clés par **corrélation à la cible + permutation importance**. La comparer à l'ACP sur B (variables réelles, corrélées) rend la démonstration.
 - Ne pas sur-nettoyer A : 0 NaN, 0 doublon, rien à jeter.
@@ -219,7 +247,11 @@ Il est produit dans tous les cas : A enrichi des agrégats de B par culture (ren
 
 **MLflow :** deux expériences — `crop_yield_A_predict` et `crop_yield_B_recommend`. Un run par modèle/config, log params + **RMSE, MAE, R²** + artefact modèle + importances. Seed fixé partout. Screenshots `.png`.
 
-**Sur `model_B` — décision technique :** inclure `Area` (pays) monte le R² de 0,955 → 0,979, mais impose un sélecteur de pays dans l'UI et fait porter au modèle un proxy « intensité agricole nationale ». **Recommandation : l'exclure** du modèle applicatif (garder `Item + climat + Year`), et montrer la variante avec `Area` dans MLflow comme borne supérieure.
+**Sur `model_B` — décisions techniques :**
+- Inclure `Area` (pays) monte le R², mais impose un sélecteur de pays dans l'UI et fait porter au modèle un proxy « intensité agricole nationale ». **Recommandation : l'exclure** du modèle applicatif (garder `Item + climat + Year`), et montrer la variante avec `Area` dans MLflow comme borne supérieure.
+- **Évaluer avec un `GroupShuffleSplit` par pays, pas un split aléatoire** — sinon on remesure la fuite. Annoncer les deux chiffres : pays connus **0,928**, pays nouveaux **0,543**.
+- Utiliser **`pesticides_kg_per_ha`** (intensité) plutôt que `pesticides_tonnes` (tonnage national).
+- Attente calibrée : `Item` porte l'essentiel du signal. La cible varie à **79 % à l'intérieur des pays** (selon culture et année) alors que les 3 variables climatiques sont à ~100 % inter-pays — elles ne peuvent structurellement éclairer qu'un cinquième de la variance.
 
 **Sortie :** `model_A.joblib`, `model_B.joblib`, `metrics.json`, `05_training.ipynb` (ou `train.py`).
 
@@ -245,7 +277,11 @@ En v1 c'était un raffinement. Avec `model_B`, **classer par t/ha bruts n'a plus
 - **(a) Proxy = rendement brut** — désormais **déconseillé** : produit un classement dominé par le tonnage, pas par la valeur.
 - **(b) Table prix/coûts par culture** (€/t, coût/ha, paramétrable dans l'UI) → `profit = prix × rendement − coût`. Hypothèse externe **à documenter et à sourcer**, mais c'est ce qui rend le classement interprétable, et c'est exactement ce que demande le brief (« modéliser la relation entre espèces, coûts de production et profits »).
 
-> **Recommandation : (b)**, avec les prix exposés comme paramètres modifiables dans Streamlit — l'utilisateur voit l'hypothèse et peut la challenger. Excellent matériau pour la question « quels gains anticipés ». → **À valider** (§11).
+> **Recommandation : (b)**, avec les prix exposés comme paramètres modifiables dans Streamlit — l'utilisateur voit l'hypothèse et peut la challenger. Excellent matériau pour la question « quels gains anticipés ».
+>
+> **Décision v3 : traité à l'étape 4, côté Streamlit.** Vérifié — il n'existe **aucune donnée de prix ni de coût** dans les trois sources. Les prix producteurs sont téléchargeables chez FAOSTAT si besoin, mais les coûts de production n'existent dans aucune source ouverte harmonisée : cette moitié restera une hypothèse quoi qu'il arrive. Or le calcul est un simple **prix au kilo × rendement prédit** — il n'a pas besoin de vivre dans le modèle ni dans la fusion. Une table de 10 lignes éditable dans l'interface suffit, et isole l'hypothèse là où l'utilisateur la voit.
+>
+> **Ce n'est pas optionnel pour autant** : mesuré sur `B_enriched`, la pomme de terre sort première avec **16 t/ha** médians dans **tous** les contextes climatiques, devant les autres tubercules. Sans pondération économique, `/recommend` n'est qu'un tri par densité de matière.
 
 **Livrables :** `main.py`, `Dockerfile`, `requirements.txt`.
 
@@ -259,6 +295,8 @@ En v1 c'était un raffinement. Avec `model_B`, **classer par t/ha bruts n'a plus
 - affichage : **chiffre clair** (prédiction) / **bar chart + table triés** (recommandation) ;
 - gestion d'erreur si l'API est indisponible ;
 - **⚠️ point d'UX imposé par le §2** : sous `/predict`, expliciter que le rendement estimé dépend des conditions de parcelle et non de la culture dans ce jeu de données, et afficher en regard la référence réelle FAO de la culture. Transformer la limite en information plutôt qu'en bug apparent.
+- **⚠️ filtre de domaine de validité sur `/recommend`** : toutes les cultures ne poussent pas partout. Dans un contexte tempéré (10 °C, 600–1000 mm), seules **7 cultures sur 10** ont des observations réelles — manioc, igname et plantain n'en ont aucune. Un modèle à base d'arbres ne refuse jamais de prédire : il rabattrait la prédiction sur la feuille la plus proche et renverrait un rendement de pays chaud, plausible à l'écran et infondé. Ne classer que les cultures observées dans une fenêtre climatique proche, en s'appuyant sur les **percentiles p5/p95** (les min/max sont élargis par quelques grands pays hétérogènes).
+- **⚠️ libellés honnêtes des champs de saisie** : `pesticides`, `pluviométrie` et `température` sont des **agrégats nationaux**, pas des mesures de parcelle. La pluviométrie est même une constante par pays. Libeller « pluviométrie annuelle de votre région » plutôt que « de votre parcelle », et le dire dans le rapport métier.
 
 **Livrables :** `app.py`, `requirements.txt`.
 
@@ -327,6 +365,12 @@ OC_P12/
 | 231 rendements négatifs | 🟡 mineur | Clip à 0, documenté |
 | Free tiers instables en démo | 🟡 | Compose local en fallback |
 | Reproductibilité | 🟢 | seeds, `uv.lock`, MLflow |
+| **Doublons de `yield_df.csv` → fuite de données** | 🔴 **confirmé** | Dédoublonner via `temp.csv` agrégé par pays (§1). `GroupShuffleSplit` à l'évaluation |
+| **USA / Chine / Russie perdus sur le nommage** | 🔴 confirmé | Table de correspondance FAO → courant, appliquée aux 4 fichiers + Land Use (§1) |
+| **R² `model_B` surestimé** | 🟠 confirmé | 0,928 / 0,543 au lieu de 0,946 (§2) |
+| **Recommandation hors domaine climatique** | 🟠 confirmé | Filtre de validité p5/p95 (§7) |
+| Variables d'entrée = agrégats nationaux | 🟠 confirmé | Libellés régionaux + mention au rapport (§7) |
+| Encodage UTF-8 des fichiers FAOSTAT | 🟡 | `encoding="utf-8"` explicite, sinon perte silencieuse de pays |
 
 ---
 
@@ -335,10 +379,12 @@ OC_P12/
 | # | Décision | Statut | Recommandation |
 |---|---|---|---|
 | 1 | **Architecture de modélisation** (§3) | ⏳ **à trancher — le plus urgent** | **R1** (un modèle par endpoint) ; R2 en repli |
-| 2 | **Rentabilité** (§6) | ⏳ à trancher avant l'Étape 3 | **(b)** table prix/coûts paramétrable — n'est plus optionnelle |
+| 2 | **Rentabilité** (§6) | ✅ tranchée | **(b)**, portée par Streamlit à l'étape 4 : prix × rendement, table de 10 lignes éditable. Aucune donnée de prix/coût n'existe dans les sources |
 | 3 | **Déploiement** (§6) | ✅ tranchée | Hybride : local fiable + cloud bonus |
 | 4 | **`Area` dans `model_B`** (§5) | ⏳ mineure | L'exclure du modèle applicatif |
 | 5 | **`.gitignore`** (§9) | 🔴 à faire **avant le 1ᵉʳ commit** | Ignorer `data/`, `mlruns/`, modèles |
+| 6 | **Périmètre du dataset B** (§1) | ✅ tranchée | `B_enriched` : 14 371 l., 109 pays, intensité en kg/ha. Les 3 versions sont conservées pour comparaison |
+| 7 | **3ᵉ source (Land Use)** (§1) | ✅ tranchée | Intégrée, couverture 100 %. Justification : interprétabilité + question posable à l'utilisateur |
 
 > Les décisions 1 et 2 conditionnent les Étapes 2 et 3. La décision 1 devrait être prise **pendant** le notebook `01`, une fois l'audit du §2 rejoué et vu de tes propres yeux.
 
