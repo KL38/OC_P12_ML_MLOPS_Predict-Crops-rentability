@@ -94,6 +94,22 @@ Yield ≈ 0,005·Rainfall + 0,02·Temperature + 1,5·Fertilizer + 1,2·Irrigatio
 
 **➕ 3ᵉ source ajoutée — FAOSTAT *Land Use*** (`data/LandUse/`). `pesticides_tonnes` est un tonnage national qui mélange taille du pays et intensité des pratiques : la France « consomme » 84 000 t/an contre 46 000 t/an pour l'Inde. Rapporté à la surface `Cropland`, on obtient une **intensité en kg/ha** agronomiquement juste (Inde 0,27 · USA 2,36 · France 4,34 · Belgique 7,81) — et surtout une grandeur que l'utilisateur de l'application peut renseigner. Couverture **100 %** après extension de la table de noms. Jeu final : **`B_enriched`**, 14 371 × 10.
 
+### Ce que l'EDA de B a établi *(notebook `EDA CYPD.ipynb`)*
+
+| Constat | Chiffre | Conséquence pour la suite |
+|---|---|---|
+| **Cible log-normale** | skewness 2,11 brut → **−0,20 en log** | tester l'entraînement sur `log(cible)` puis retour en t/ha : stabilise la variance et évite que les tubercules dominent la perte |
+| **Les 917 « outliers » sont tous des tubercules**, aucune céréale | 917 → 370 en appliquant la règle par culture | ne rien supprimer ; toute analyse de la cible se fait **par culture** |
+| **`pesticides_kg_per_ha` est la meilleure variable numérique** | +0,31 global, **+0,51 intra-culture**, jusqu'à +0,66 | la retenir plutôt que le tonnage ; c'est ce qui justifie la 3ᵉ source |
+| **Aucune réponse à la pluviométrie n'est estimable** | constante pour **109/109 pays** ; les déciles comparent des groupes de 3 à 14 pays | voir §5 et §7 |
+| **(pluie, température) identifie le pays sans ambiguïté** | 0 cas sur 2 287 ; 108 valeurs de pluie pour 109 pays | voir la décision n°4 (§12) |
+| **`Item` explique 53,2 % de la variation du rendement** (η² = SCE/SCT) | contre **20,6 %** pour `Area` et 0,8 % pour `Year` | la culture pèse deux fois et demie plus que le pays. À comparer au dataset A, où `Crop` plafonne à **0,0006 %** |
+| ⚠️ **Correction de la v3** : la version précédente concluait l'inverse (`Area` > `Item`) à partir de l'écart entre moyennes extrêmes | 23,4 t/ha pour `Area` contre 16,5 pour `Item` | cet indicateur ne regarde que 2 modalités sur 109 et ignore les effectifs : avec 109 pays on trouve forcément un extrême. **Le η² est la bonne mesure** — pondérée par les effectifs, sur toutes les modalités |
+| Distributions très asymétriques | `pesticides_kg_per_ha` skew 5,8 · `cropland_1000ha` 3,8 | passage au log pour les modèles linéaires ; sans effet pour les arbres |
+| Effectifs déséquilibrés par culture | Yams 477 lignes contre Potatoes 2 270 | fiabilité inégale selon la culture, à signaler dans l'UI |
+| Couverture non uniforme (culture × climat) | à 10 °C et 600-1000 mm, **7 cultures sur 10** documentées | impose le filtre de validité du §7 |
+| Écart de rendement entre cultures | **16,5 t/ha**, rapport de 1 à 12 (sorgho → pomme de terre) | confirme que le signal culture est bien dans B |
+
 ### Le nœud A ↔ B
 
 | Dimension | Dataset A | Dataset B |
@@ -228,7 +244,7 @@ Il est produit dans tous les cas : A enrichi des agrégats de B par culture (ren
 - **231 rendements négatifs** dans A → **ne pas les supprimer et ne pas modifier la cible**. C'est la queue gauche du bruit gaussien du générateur, pas une erreur de saisie, et elles sont toutes dans le segment sans engrais ni irrigation — les retirer tronquerait la queue basse précisément dans le segment le plus utile à la recommandation. Le clip à 0 se fait **à la sortie du modèle, côté API**. 0,023 % des lignes.
 - **Aucun outlier à traiter dans A** : la règle 3 × IQR n'en détecte **aucun**, et |z| > 3 en trouve 37 au lieu des 2 700 attendus sous normalité. La cible est bornée par construction (somme d'uniformes).
 - **Pièges des bruts B** à traiter explicitement : `" Area"` avec espace, `to_numeric(errors="coerce")` sur rainfall (780 `..`), renommage `year`/`country` de `temp.csv`.
-- **ACP — cadrage du narratif.** Le brief l'exige pour « identifier les variables clés ». Résultat mesuré sur A : `[0,3342 ; 0,3334 ; 0,3324]`, scree plot parfaitement plat, **zéro compression possible**. Ce n'est pas un échec, c'est un **diagnostic** : on montre l'ACP, on conclut que les variables sont orthogonales par construction, et on identifie les variables clés par **corrélation à la cible + permutation importance**. La comparer à l'ACP sur B (variables réelles, corrélées) rend la démonstration.
+- **ACP — cadrage du narratif.** Le brief l'exige pour « identifier les variables clés ». Résultat mesuré sur A : `[0,3342 ; 0,3334 ; 0,3324]`, scree plot parfaitement plat, **zéro compression possible**. Ce n'est pas un échec, c'est un **diagnostic** : on montre l'ACP, on conclut que les variables sont orthogonales par construction, et on identifie les variables clés par **corrélation à la cible + permutation importance**. La comparer à l'ACP sur B rend la démonstration — **mais pas comme prévu en v2** : mesurée, l'ACP sur B est plate elle aussi (`[0,298 ; 0,221 ; 0,194 ; 0,182 ; 0,105]`, corrélations inter-variables ≤ 0,36). Les variables de B **ne sont pas corrélées entre elles**. Deux scree plots identiques, deux causes opposées : dans A parce que le générateur a tiré des variables indépendantes, dans B parce que chaque variable capte une facette différente d'un même pays. C'est une meilleure démonstration que celle attendue, et elle se raconte en une slide.
 - Ne pas sur-nettoyer A : 0 NaN, 0 doublon, rien à jeter.
 
 ---
@@ -243,6 +259,8 @@ Il est produit dans tous les cas : A enrichi des agrégats de B par culture (ren
 **⚠️ Attentes à calibrer dès maintenant — mesuré :**
 - Sur A, **l'OLS bat le gradient boosting** : R² **0,9132** (linéaire) vs **0,9117** (HGB). Normal, le générateur est additif-linéaire. Le vainqueur de ton benchmark sera un **Ridge**, et c'est un excellent point de soutenance (« le modèle le plus simple gagne, voici pourquoi »).
 - **Le plafond est à R² ≈ 0,913 / RMSE ≈ 0,50** (bruit irréductible). Inutile de chercher au-delà.
+- **Ce plafond est un détecteur de bug.** Il est calculé, pas constaté : la variance du bruit injecté vaut 0,25 pour une variance totale de 2,881, soit 8,7 % non explicables par construction. Donc **tout score au-dessus de R² 0,913 sur A signale une erreur de protocole** — fuite de données, cible dans les features, ou split incorrect. À vérifier systématiquement avant de se réjouir d'un bon score.
+- **Ni facteur confondant, ni interaction dans A** *(mesuré dans `EDA ACY.ipynb`)*. Les variables catégorielles sont indépendantes des numériques : l'écart entre moyennes de groupes plafonne à **1,3 mm** de pluviométrie sur une plage de 900 (0,15 %). Et conditionner par la culture ne change pas les corrélations — `Rainfall_mm` reste à +0,770 globalement comme dans chacune des six cultures, à la troisième décimale près. Conséquences : **aucun terme d'interaction à construire**, aucun encodage croisé à tester, et un modèle purement additif est exactement bien spécifié. C'est aussi ce qui distingue le plus nettement A de B, où le signe des corrélations s'inverse selon la culture.
 - **Corollaire important** : la soutenance demande *« quels hyperparamètres ont été décisifs ? »*. Sur A, la réponse honnête est **aucun** — et il faut pouvoir le prouver plutôt que le subir. → **Faire porter l'optimisation d'hyperparamètres sur `model_B`**, où elle a un effet réel (R² 0,13 → 0,95 selon les features, marge d'optimisation existante).
 
 **MLflow :** deux expériences — `crop_yield_A_predict` et `crop_yield_B_recommend`. Un run par modèle/config, log params + **RMSE, MAE, R²** + artefact modèle + importances. Seed fixé partout. Screenshots `.png`.
@@ -252,6 +270,9 @@ Il est produit dans tous les cas : A enrichi des agrégats de B par culture (ren
 - **Évaluer avec un `GroupShuffleSplit` par pays, pas un split aléatoire** — sinon on remesure la fuite. Annoncer les deux chiffres : pays connus **0,928**, pays nouveaux **0,543**.
 - Utiliser **`pesticides_kg_per_ha`** (intensité) plutôt que `pesticides_tonnes` (tonnage national).
 - Attente calibrée : `Item` porte l'essentiel du signal. La cible varie à **79 % à l'intérieur des pays** (selon culture et année) alors que les 3 variables climatiques sont à ~100 % inter-pays — elles ne peuvent structurellement éclairer qu'un cinquième de la variance.
+- **Tester `log(cible)`** comme variante : la cible est log-normale (skewness −0,20 en log). Sans transformation, l'erreur sera mécaniquement dominée par les tubercules (16 t/ha) au détriment des légumineuses (1,6 t/ha).
+- **Log sur `pesticides_kg_per_ha` et `cropland_1000ha`** pour les modèles linéaires uniquement (skewness 5,8 et 3,8). Inutile pour les arbres.
+- **Hypothèse à tester : retirer `average_rain_fall_mm_per_year`.** Elle identifie le pays à 99 % et n'apporte aucune variation temporelle ; c'est le principal vecteur de mémorisation. Mais elle porte aussi un signal réel intra-culture (+0,42 sur l'igname) : c'est un **arbitrage à mesurer**, moins de fuite contre moins de signal — pas une évidence.
 
 **Sortie :** `model_A.joblib`, `model_B.joblib`, `metrics.json`, `05_training.ipynb` (ou `train.py`).
 
@@ -297,6 +318,8 @@ En v1 c'était un raffinement. Avec `model_B`, **classer par t/ha bruts n'a plus
 - **⚠️ point d'UX imposé par le §2** : sous `/predict`, expliciter que le rendement estimé dépend des conditions de parcelle et non de la culture dans ce jeu de données, et afficher en regard la référence réelle FAO de la culture. Transformer la limite en information plutôt qu'en bug apparent.
 - **⚠️ filtre de domaine de validité sur `/recommend`** : toutes les cultures ne poussent pas partout. Dans un contexte tempéré (10 °C, 600–1000 mm), seules **7 cultures sur 10** ont des observations réelles — manioc, igname et plantain n'en ont aucune. Un modèle à base d'arbres ne refuse jamais de prédire : il rabattrait la prédiction sur la feuille la plus proche et renverrait un rendement de pays chaud, plausible à l'écran et infondé. Ne classer que les cultures observées dans une fenêtre climatique proche, en s'appuyant sur les **percentiles p5/p95** (les min/max sont élargis par quelques grands pays hétérogènes).
 - **⚠️ libellés honnêtes des champs de saisie** : `pesticides`, `pluviométrie` et `température` sont des **agrégats nationaux**, pas des mesures de parcelle. La pluviométrie est même une constante par pays. Libeller « pluviométrie annuelle de votre région » plutôt que « de votre parcelle », et le dire dans le rapport métier.
+- **⚠️ ce que fait réellement le curseur « pluviométrie »** : la pluviométrie ne variant jamais à l'intérieur d'un pays, le déplacer ne simule pas « et s'il pleuvait davantage sur ma parcelle » — ça déplace la prédiction vers les rendements **d'autres pays** ayant cette pluviométrie. Seul `pesticides_kg_per_ha` varie réellement dans le temps au sein d'un pays (CV intra-pays 0,33 contre 0,00) : c'est le seul curseur dont le sens soit proche de « et si je changeais ma pratique ». À expliciter dans le rapport métier.
+- **⚠️ fiabilité inégale selon la culture** : de 477 observations (Yams) à 2 270 (Potatoes). Afficher une réserve sur les cultures peu documentées.
 
 **Livrables :** `app.py`, `requirements.txt`.
 
@@ -381,7 +404,7 @@ OC_P12/
 | 1 | **Architecture de modélisation** (§3) | ⏳ **à trancher — le plus urgent** | **R1** (un modèle par endpoint) ; R2 en repli |
 | 2 | **Rentabilité** (§6) | ✅ tranchée | **(b)**, portée par Streamlit à l'étape 4 : prix × rendement, table de 10 lignes éditable. Aucune donnée de prix/coût n'existe dans les sources |
 | 3 | **Déploiement** (§6) | ✅ tranchée | Hybride : local fiable + cloud bonus |
-| 4 | **`Area` dans `model_B`** (§5) | ⏳ mineure | L'exclure du modèle applicatif |
+| 4 | **`Area` dans `model_B`** (§5) | ⏳ mineure — **motif révisé** | L'exclure reste recommandé, mais pour une raison d'**interface** (éviter un sélecteur de 109 pays), pas de modèle : le couple (pluie, température) identifie le pays sans ambiguïté, donc le modèle le reconstruit de toute façon. Retirer la colonne est **cosmétique** côté apprentissage |
 | 5 | **`.gitignore`** (§9) | 🔴 à faire **avant le 1ᵉʳ commit** | Ignorer `data/`, `mlruns/`, modèles |
 | 6 | **Périmètre du dataset B** (§1) | ✅ tranchée | `B_enriched` : 14 371 l., 109 pays, intensité en kg/ha. Les 3 versions sont conservées pour comparaison |
 | 7 | **3ᵉ source (Land Use)** (§1) | ✅ tranchée | Intégrée, couverture 100 %. Justification : interprétabilité + question posable à l'utilisateur |
