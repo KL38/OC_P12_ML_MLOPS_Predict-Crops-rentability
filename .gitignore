@@ -1,0 +1,22 @@
+# Données sources (~110 Mo) — provenance documentée dans le README
+data/
+
+# Données dérivées, régénérables par les notebooks
+notebooks/df.csv
+*.parquet
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Logs d'entraînement CatBoost
+catboost_info/
+
+# Modèles entraînés
+models/*.joblib
+
+# Environnement Python
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
