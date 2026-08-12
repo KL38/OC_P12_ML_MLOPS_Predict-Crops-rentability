@@ -22,6 +22,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # httpx est le client de fastapi.testclient. Il est déjà présent en transitif, mais
+    # une dépendance transitive peut disparaître à la prochaine résolution : déclarée ici,
+    # la CI ne peut pas casser sur une mise à jour sans rapport.
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "ruff>=0.16.2",
 ]
