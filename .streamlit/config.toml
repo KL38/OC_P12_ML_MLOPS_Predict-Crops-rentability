@@ -1,0 +1,33 @@
+# Identité visuelle Agritech Answers, en thème natif plutôt qu'en CSS injecté : les
+# couleurs suivent les mises à jour de Streamlit et ne cassent pas au prochain changement
+# de classe interne.
+#
+# Les deux couleurs sont échantillonnées dans le logo lui-même : le vert #33673A du
+# pictogramme et du texte, et le blanc cassé chaud #F6F4F1 de son fond. Donner ce même
+# fond à l'app fait disparaître le rectangle du PNG — le logo semble détouré.
+#
+# Un seul bloc [theme] et pas de [theme.dark] : le logo est un PNG à fond opaque clair,
+# un mode sombre afficherait une plaque blanche autour. L'app est donc verrouillée en clair,
+# volontairement.
+
+[theme]
+base = "light"
+
+primaryColor = "#33673A"              # boutons primaires, onglet actif, curseurs
+backgroundColor = "#F6F4F1"           # le fond exact du logo
+secondaryBackgroundColor = "#EAE6E0"  # widgets, tableaux — plus soutenu que le fond
+textColor = "#1F2A24"                 # quasi-noir légèrement vert, contraste AA sur le fond
+borderColor = "#D8D2CA"
+
+# Statuts : servent au vert / rouge de la colonne « cultivable » du classement.
+greenColor = "#33673A"
+redColor = "#B3261E"
+
+# Les barres du graphique de marge reprennent le vert de la marque.
+chartCategoricalColors = ["#33673A", "#5E8C56", "#8AAE74", "#B7CF9C", "#6B8E7B"]
+
+dataframeHeaderBackgroundColor = "#EAE6E0"
+
+baseRadius = "8px"
+linkUnderline = false
+showWidgetBorder = true

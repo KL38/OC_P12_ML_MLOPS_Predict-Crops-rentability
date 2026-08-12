@@ -38,11 +38,12 @@ jobs:
       - name: Installer les dépendances
         run: uv sync --locked
 
+      # `app` est inclus : le front est du code livré, au même titre que l'API.
       - name: Erreurs et code mort (ruff check)
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests app
 
       - name: Mise en forme (ruff format)
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests app
 
   tests:
     name: Tests

@@ -1,0 +1,12 @@
+# Dépendances du FRONT uniquement, volontairement minimales.
+#
+# Streamlit Community Cloud cherche un fichier de dépendances d'abord dans le dossier de
+# l'entrypoint, puis à la racine du dépôt — où il trouverait `uv.lock` et installerait
+# catboost, mlflow et jupyter pour une app qui n'a besoin que de ces trois paquets.
+#
+# Le front ne contient aucune logique de machine learning : ni scikit-learn, ni numpy,
+# ni le modèle. Il interroge l'API, c'est tout.
+
+streamlit>=1.61
+requests>=2.32
+pandas>=2.3,<3
