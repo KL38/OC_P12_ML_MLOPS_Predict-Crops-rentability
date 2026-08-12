@@ -13,9 +13,12 @@
 |---|---|---|
 | **1** — Explorer, fusionner, préparer | ✅ | `notebooks/EDA CYPD.ipynb`, dataset consolidé, ACP |
 | **2** — Construire et optimiser le modèle | ✅ | `notebooks/ML CYPD.ipynb`, 14 runs MLflow, registre `crop_yield_recommender` v1 `@champion` |
-| **3** — API de prédiction | 🟡 | `src/api.py` (3 routes) — **manque Dockerfile + requirements.txt** |
-| **4** — Interface Streamlit | 🟡 | `app/app.py` (2 pages) — **à tester manuellement** |
-| **5** — Tests et déploiement automatisés | 🟡 | `.github/workflows/ci.yml` (2 jobs) — **manque CD, doc, badges** |
+| **3** — API de prédiction | ✅ | `src/api.py` (3 routes), `Dockerfile`, `requirements.txt` |
+| **4** — Interface Streamlit | ✅ | `app/app.py` (2 onglets), thème `.streamlit/config.toml`, `app/Dockerfile` |
+| **5** — Tests et déploiement automatisés | 🟡 | `ci.yml` : `lint` · `tests` · `build` — **manque le README (doc + badges)** |
+
+**Démo** : `docker compose up --build` → http://localhost:8501. Aucun secret, aucun compte
+externe, aucune dépendance réseau.
 
 **Modèle retenu** : HistGradientBoosting sur `log(rendement)`, protocole `GroupKFold` par pays.
 CV R² 0,595 · test R² 0,627 · RMSE 4,94 t/ha · MAE 2,85 sur 22 pays jamais vus.
@@ -26,25 +29,17 @@ CV R² 0,595 · test R² 0,627 · RMSE 4,94 t/ha · MAE 2,85 sur 22 pays jamais 
 
 ## Ce qui reste, dans l'ordre
 
-### 1. Valider le front à la main *(Kevin)*
+### 1. ~~Valider le front~~ ✅
 
-```powershell
-uv sync                                  # installe requests
-uv run uvicorn src.api:app --reload      # terminal 1
-uv run streamlit run app/app.py          # terminal 2
-```
+### 2. ~~Conteneurisation~~ ✅
 
-À vérifier : les deux pages, le bouton, le tableau de prix qui reclasse sans rappeler l'API,
-le message d'erreur quand l'API est coupée.
+`Dockerfile` multi-étage (uv épinglé, non-root, `${PORT:-8000}`, healthcheck),
+`app/Dockerfile`, `docker-compose.yml`, `.dockerignore`, `requirements.txt`.
 
-### 2. Conteneurisation *(Étape 3 du brief)*
-
-- `Dockerfile` de l'API — base `python:3.12-slim`, `uv sync --frozen`, copie de `src/`,
-  `models/model_B.joblib` et `models/domaine_validite.json`.
-- `requirements.txt` à la racine, généré et non écrit à la main :
-  `uv export --format requirements.txt --no-dev --no-emit-project > requirements.txt`
-- `docker-compose.yml` — API + front, `API_URL=http://api:8000` côté front. C'est la démo
-  de secours garantie hors ligne.
+`pyproject.toml` a été redécoupé pour l'occasion : `[project]` ne porte plus que les
+6 dépendances du runtime de l'API, le reste vit dans les groupes `notebooks`, `app` et
+`dev`, avec `default-groups` pour que le poste de travail ne change pas. Sans ce découpage
+l'image embarquerait catboost (330 Mo), mlflow, jupyter et matplotlib.
 
 ### 3. ~~Livraison continue~~ — écartée
 

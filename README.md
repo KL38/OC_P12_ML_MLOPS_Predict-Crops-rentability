@@ -1,0 +1,360 @@
+<a id="readme-top"></a>
+
+[![CI][ci-shield]][ci-url]
+[![Python][python-shield]][python-url]
+[![FastAPI][fastapi-shield]][fastapi-url]
+[![Streamlit][streamlit-shield]][streamlit-url]
+[![Docker][docker-shield]][docker-url]
+[![MLflow][mlflow-shield]][mlflow-url]
+
+<br />
+<div align="center">
+  <a href="https://github.com/KL38/OC_P12">
+    <img src="app/logo.png" alt="Agritech Answers" width="320">
+  </a>
+
+  <h3 align="center">Prédiction de rendements & moteur de recommandation de culture</h3>
+
+  <p align="center">
+    Un modèle unique, servi par une API, interrogé par une interface — pour aider un
+    agriculteur à choisir quoi semer.
+    <br />
+    <a href="brief/plan.md"><strong>Plan de travail »</strong></a>
+    <br />
+    <br />
+    <a href="#démarrage">Démarrage</a>
+    &middot;
+    <a href="#pipeline-cicd">Pipeline CI/CD</a>
+    &middot;
+    <a href="#le-modèle">Le modèle</a>
+  </p>
+</div>
+
+<details>
+  <summary>Sommaire</summary>
+  <ol>
+    <li>
+      <a href="#à-propos-du-projet">À propos du projet</a>
+      <ul>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#construit-avec">Construit avec</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#démarrage">Démarrage</a>
+      <ul>
+        <li><a href="#prérequis">Prérequis</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#utilisation">Utilisation</a></li>
+    <li><a href="#pipeline-cicd">Pipeline CI/CD</a></li>
+    <li><a href="#le-modèle">Le modèle</a></li>
+    <li><a href="#structure-du-dépôt">Structure du dépôt</a></li>
+    <li><a href="#feuille-de-route">Feuille de route</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#sources-et-remerciements">Sources et remerciements</a></li>
+  </ol>
+</details>
+
+## À propos du projet
+
+L'application remplit deux fonctions complémentaires, au sein d'une même interface :
+
+- **Prédiction** — l'utilisateur choisit une culture, décrit les conditions de sa région,
+  et obtient une estimation chiffrée du rendement attendu.
+- **Recommandation** — l'utilisateur ne décrit que ses conditions, et l'application classe
+  les dix cultures par rentabilité estimée.
+
+C'est **un seul modèle appelé deux fois différemment** : `/recommend` n'est rien d'autre
+que `/predict` exécuté sur les dix cultures d'un même contexte, suivi d'une couche métier.
+Aucun second modèle, aucun second entraînement.
+
+Les prix ne transitent jamais par l'API. Elle rend des **rendements** ; la marge se calcule
+dans l'interface, à partir d'un tableau que l'agriculteur ajuste à son exploitation.
+Modifier un prix reclasse l'affichage sans relancer la moindre requête.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    U(["Agriculteur"]) -->|navigateur| S["<b>Streamlit</b><br/>app/app.py<br/>aucune logique ML"]
+    S -->|"POST /predict<br/>POST /recommend"| A["<b>FastAPI</b><br/>src/api.py"]
+    A --> M[("model_B.joblib<br/>domaine_validite.json")]
+    S -.->|table éditable| P[("prix_couts.csv")]
+```
+
+Deux garde-fous distincts, et la distinction est volontaire :
+
+| Mécanisme | Ce qu'il traite | Réponse |
+|---|---|---|
+| **Pydantic** | l'impossible physiquement — pluie négative, −300 °C, culture inconnue | `422`, champ fautif nommé, rien n'est prédit |
+| **Domaine de validité** | l'invraisemblable agronomiquement — du manioc à 5 °C | `200` avec `cultivable: false` et le motif |
+
+Un modèle à base d'arbres ne refuse jamais de prédire : sans ce second garde-fou, il
+afficherait un rendement parfaitement plausible là où aucune observation n'a jamais existé.
+
+### Construit avec
+
+* [![Python][python-shield]][python-url]
+* [![FastAPI][fastapi-shield]][fastapi-url]
+* [![Streamlit][streamlit-shield]][streamlit-url]
+* [![scikit-learn][sklearn-shield]][sklearn-url]
+* [![MLflow][mlflow-shield]][mlflow-url]
+* [![Docker][docker-shield]][docker-url]
+* [![uv][uv-shield]][uv-url]
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Démarrage
+
+### Prérequis
+
+Au choix, selon la façon de lancer :
+
+* **Docker** — c'est tout. [Docker Desktop](https://docs.docker.com/get-started/get-docker/)
+* **ou** Python 3.12 et [uv](https://docs.astral.sh/uv/getting-started/installation/)
+
+### Installation
+
+```sh
+git clone git@github.com:KL38/OC_P12.git
+cd OC_P12
+```
+
+Le modèle entraîné (`models/model_B.joblib`, 217 Ko) est versionné : rien à télécharger,
+rien à réentraîner pour lancer l'application.
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Utilisation
+
+### Avec Docker — recommandé
+
+Une commande, les deux services :
+
+```sh
+docker compose up --build
+```
+
+| Service | Adresse |
+|---|---|
+| Interface | <http://localhost:8501> |
+| API | <http://localhost:8000> |
+| Documentation interactive de l'API | <http://localhost:8000/docs> |
+
+L'interface n'est lancée qu'une fois l'API déclarée saine — Compose attend que
+`/health` réponde, donc que le modèle soit chargé.
+
+### Sans Docker
+
+```sh
+uv sync
+
+# terminal 1
+uv run uvicorn src.api:app --reload
+
+# terminal 2
+uv run streamlit run app/app.py
+```
+
+### L'API en ligne de commande
+
+```sh
+curl -X POST http://localhost:8000/predict \
+  -H 'content-type: application/json' \
+  -d '{"pluie_mm": 1030, "temperature_c": 20.4, "pesticides_kg_ha": 0.9, "culture": "Maize"}'
+```
+
+| Route | Méthode | Rôle |
+|---|---|---|
+| `/health` | GET | état du service, cultures connues, réserve à afficher |
+| `/predict` | POST | une culture → un rendement en t/ha |
+| `/recommend` | POST | un contexte → les dix cultures, classées |
+
+### Les tests
+
+```sh
+uv run pytest tests -v
+```
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Pipeline CI/CD
+
+Un workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), dont l'état est le
+badge en haut de cette page.
+
+### Déclencheurs
+
+| Événement | Quand |
+|---|---|
+| `push` | sur `main` uniquement |
+| `pull_request` | sur toute branche |
+| `workflow_dispatch` | à la demande, depuis l'onglet Actions |
+
+### Les trois jobs
+
+```mermaid
+flowchart LR
+    P(["push / PR"]) --> L["<b>Lint et format</b><br/>ruff check<br/>ruff format --check"]
+    P --> T["<b>Tests</b><br/>pytest"]
+    L --> B["<b>Image Docker</b><br/>compose build<br/>up --wait<br/>appels réels"]
+    T --> B
+```
+
+| Job | Ce qu'il garantit |
+|---|---|
+| **Lint & format** | aucune erreur ni code mort dans `src`, `tests`, `app` ; mise en forme uniforme |
+| **Tests** | 26 tests, dont la **portabilité de l'artefact** vérifiée dans un interpréteur neuf |
+| **Image Docker** | les deux images se construisent, la pile démarre, **et l'API prédit réellement** |
+
+`Lint` et `Tests` tournent **en parallèle** : un échec de lint et un échec de test sont
+deux informations distinctes, autant les obtenir au même run. `Image Docker` attend les
+deux — on ne construit pas une image à partir d'un code dont les tests échouent.
+
+### Ce que le job d'image vérifie vraiment
+
+Une image qui se construit ne prouve rien. Le job démarre la pile, puis appelle
+l'API : `/health` doit renvoyer `"statut":"ok"`, et `/predict` un rendement. C'est la
+leçon du bug le plus coûteux du projet — une fonction de notebook sérialisée par
+référence se rechargeait parfaitement dans le notebook et échouait *uniquement* sous
+uvicorn. Ce genre de panne n'apparaît qu'à l'exécution.
+
+### En cas d'échec
+
+Le workflow s'arrête au premier job rouge et GitHub notifie l'auteur du push. Le job
+d'image ajoute une étape `docker compose logs` conditionnée à l'échec : sans elle, on ne
+verrait qu'un `curl` rouge, jamais la raison côté conteneur. La pile est arrêtée dans tous
+les cas.
+
+Le déploiement continu est **hors périmètre**, un choix assumé : le brief le qualifie
+d'« optionnel mais fortement recommandé », et la démonstration repose sur
+`docker compose up`, qui ne dépend d'aucun service tiers.
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Le modèle
+
+**HistGradientBoosting** entraîné sur `log(rendement)`, sélectionné parmi cinq familles de
+modèles au terme de 14 expérimentations suivies dans MLflow.
+
+| | Valeur |
+|---|---|
+| Protocole | `GroupKFold` **par pays** |
+| R² validation croisée | 0,595 |
+| R² test | **0,627** |
+| RMSE test | **4,94 t/ha** |
+| MAE test | 2,85 t/ha |
+| Entraînement | 87 pays, 1990-2013, 10 cultures |
+| Test | 22 pays **jamais vus** |
+
+Le protocole groupé par pays est celui qui décide. Un découpage aléatoire mesurerait
+surtout la mémorisation : le couple (pluviométrie, température) identifie le pays sans
+ambiguïté, et le score annoncé serait flatteur autant qu'inutile.
+
+### Ce qui pèse dans la prédiction
+
+Importance par permutation, sur le jeu de test :
+
+| Variable | Importance |
+|---|---|
+| Culture (`Item`) | **0,709** |
+| Pesticides | 0,121 |
+| Température | 0,033 |
+| Année | 0,008 |
+| Pluviométrie | −0,004 |
+
+La culture domine tout le reste. La pluviométrie ne contribue **rien** sur un pays inconnu
+— elle ne varie pas à l'intérieur d'un pays, et sert au filtre de domaine de validité
+plutôt qu'à la prédiction elle-même.
+
+### Limites connues
+
+- Les données s'arrêtent en **2013**. Un modèle à base d'arbres sature sur sa dernière
+  coupure : une prédiction pour 2026 est identique à celle de 2013. L'année réelle est
+  transmise sans correction de tendance, et l'interface affiche une réserve permanente.
+- Les trois variables d'entrée sont des **agrégats nationaux**, pas des mesures de
+  parcelle. Les curseurs sélectionnent un profil de référence.
+- La table prix/coûts est une **hypothèse** documentée, ajustable à l'écran. C'est la
+  comparaison entre cultures qui porte l'information, pas la valeur absolue en dollars.
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Structure du dépôt
+
+```
+├─ src/                     # partagé entre le notebook et l'API
+│  ├─ preprocessing.py       #   build_features + ClippedExp
+│  └─ api.py                 #   FastAPI, 3 routes
+├─ app/
+│  ├─ app.py                 # Streamlit, 2 onglets, aucune logique ML
+│  ├─ prix_couts.csv         # prix et coûts par défaut, éditables à l'écran
+│  └─ Dockerfile
+├─ models/
+│  ├─ model_B.joblib         # le modèle servi (versionné)
+│  └─ domaine_validite.json  # bornes climatiques par culture
+├─ notebooks/               # EDA, fusion, modélisation, MLflow
+├─ tests/                   # 26 tests
+├─ .streamlit/config.toml   # thème, aux couleurs du logo
+├─ Dockerfile               # image de l'API, multi-étage
+└─ docker-compose.yml       # les deux services
+```
+
+`src/preprocessing.py` est **partagé** entre le notebook d'entraînement et l'API : ce qui
+construit le modèle doit être exactement ce qui le sert, sinon les deux divergent — et la
+divergence ne se manifeste que par des prédictions fausses en production.
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Feuille de route
+
+- [x] Étape 1 — Exploration, fusion et préparation des deux jeux de données
+- [x] Étape 2 — Modélisation, optimisation et suivi MLflow
+- [x] Étape 3 — API FastAPI et conteneurisation
+- [x] Étape 4 — Interface Streamlit
+- [x] Étape 5 — Tests et build automatisés
+- [ ] Rapport métier (`.pdf`)
+- [ ] Captures MLflow annotées
+- [ ] Support de soutenance
+- [ ] *(hors périmètre)* Déploiement continu vers un registre et un hébergeur
+
+Le détail vit dans [`brief/plan.md`](brief/plan.md).
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Contact
+
+Kevin L — [github.com/KL38](https://github.com/KL38)
+
+Projet réalisé dans le cadre du parcours **Data Scientist / Machine Learning
+Engineer** d'OpenClassrooms — mission « Concevez un système de recommandation avec
+intégration de données multi-sources ».
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+## Sources et remerciements
+
+* **Agriculture Crop Yield** — rendements historiques par culture et par région
+* **Crop Yield Prediction Dataset** — pluviométrie, température, usage de pesticides
+* **FAO / Land Use** — surfaces agricoles, utilisée pour ramener les pesticides en kg/ha
+* [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — structure de ce document
+
+<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/KL38/OC_P12/ci.yml?branch=main&style=for-the-badge&label=CI
+[ci-url]: https://github.com/KL38/OC_P12/actions/workflows/ci.yml
+[python-shield]: https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white
+[python-url]: https://www.python.org/
+[fastapi-shield]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
+[fastapi-url]: https://fastapi.tiangolo.com/
+[streamlit-shield]: https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white
+[streamlit-url]: https://streamlit.io/
+[sklearn-shield]: https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white
+[sklearn-url]: https://scikit-learn.org/
+[mlflow-shield]: https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&logo=mlflow&logoColor=white
+[mlflow-url]: https://mlflow.org/
+[docker-shield]: https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white
+[docker-url]: https://www.docker.com/
+[uv-shield]: https://img.shields.io/badge/uv-DE5FE9?style=for-the-badge&logo=uv&logoColor=white
+[uv-url]: https://docs.astral.sh/uv/

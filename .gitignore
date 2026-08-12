@@ -5,8 +5,13 @@ data/
 notebooks/df.csv
 *.parquet
 
-# MLflow
+# MLflow — magasin de suivi et artefacts des runs, régénérés par le notebook.
+# mlartifacts/ pesait 425 Mo sur 546 fichiers et était suivi par git faute de figurer ici :
+# un .gitignore n'a aucun effet sur ce qui est déjà indexé. Retiré du suivi par
+# `git rm -r --cached mlartifacts`. Ce qui doit survivre à l'entraînement, ce sont les
+# captures MLflow du rapport et models/model_B.joblib, pas ce magasin local.
 mlruns/
+mlartifacts/
 mlflow.db
 
 # Logs d'entraînement CatBoost
