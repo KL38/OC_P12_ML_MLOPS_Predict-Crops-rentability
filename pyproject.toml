@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "catboost>=1.2.10",
     "faostat>=2.0.1",
+    "fastapi>=0.141.1",
     "ipykernel>=7.3.0",
     "jupyter>=1.1.1",
     "matplotlib>=3.11.1",
@@ -15,4 +16,18 @@ dependencies = [
     "pandas>=2.3,<3",
     "scikit-learn>=1.9.0",
     "seaborn>=0.13.2",
+    "streamlit>=1.61.1",
+    "uvicorn>=0.52.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Bruit de NumPy 2.5 remonté par joblib au chargement d'un modèle, pas par notre code.
+# Filtré et non supprimé : à retirer quand scikit-learn aura suivi, pour le revoir.
+filterwarnings = ["ignore:Setting the shape on a NumPy array:DeprecationWarning"]

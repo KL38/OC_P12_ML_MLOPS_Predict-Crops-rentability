@@ -1,0 +1,38 @@
+name: CI
+
+# Le jeu de données et le modèle entraîné ne sont pas versionnés (voir .gitignore) :
+# les tests qui en dépendent se désactivent d'eux-mêmes (pytest.skip). Ce qui est vérifié
+# ici est le contrat partagé entre le notebook et l'API — dont la portabilité de
+# l'artefact, la seule panne du projet qui passait tous les contrôles locaux et n'aurait
+# éclaté qu'au déploiement.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  qualite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+
+      # Le groupe dev (pytest, ruff) est inclus par défaut : `--dev` n'est pas un flag uv,
+      # seul `--no-dev` existe pour l'exclure.
+      - name: Installer les dépendances
+        run: uv sync
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
+
+      - name: Format (ruff)
+        run: uv run ruff format --check src tests
+
+      - name: Tests (pytest)
+        run: uv run pytest tests -v

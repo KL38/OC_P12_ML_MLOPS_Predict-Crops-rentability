@@ -1,0 +1,34 @@
+{
+  "dataframe_split": {
+    "columns": [
+      "Item",
+      "Year",
+      "average_rain_fall_mm_per_year",
+      "avg_temp",
+      "pesticides_kg_per_ha"
+    ],
+    "data": [
+      [
+        "Maize",
+        1990,
+        1485.0,
+        16.37,
+        0.171875
+      ],
+      [
+        "Maize",
+        1991,
+        1485.0,
+        15.36,
+        0.1721194879089616
+      ],
+      [
+        "Maize",
+        1992,
+        1485.0,
+        16.06,
+        0.1721194879089616
+      ]
+    ]
+  }
+}
