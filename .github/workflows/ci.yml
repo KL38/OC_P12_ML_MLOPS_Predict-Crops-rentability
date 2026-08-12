@@ -13,13 +13,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  qualite:
+  lint-and-test:
+    name: Lint & tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      # Version complète et non `@v9` : setup-uv ne publie plus de tag majeur flottant
+      # depuis v7, `@v9` ne se résout donc pas. Épingler la version exacte est de toute
+      # façon la bonne pratique — le CI ne peut pas casser sur une mise à jour de l'action.
       - name: Installer uv
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
