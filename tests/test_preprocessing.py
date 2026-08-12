@@ -5,6 +5,10 @@ against passed every local check: a model whose inverse_func is a plain notebook
 pickles fine and reloads fine *in the notebook*, then raises AttributeError inside uvicorn,
 because "__main__._clipped_exp" does not exist there. Only a fresh interpreter catches it —
 which is precisely what CI gives us and a local run does not.
+
+It runs on the shipped artifact itself rather than a look-alike built on the spot:
+`models/model_B.joblib` is versioned, because the Docker image copies it in. Its absence
+is a failure, never a skip.
 """
 
 import pickle
@@ -17,14 +21,13 @@ import joblib
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.compose import TransformedTargetRegressor
-from sklearn.dummy import DummyRegressor
-from sklearn.pipeline import make_pipeline
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+RACINE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RACINE))
 
-from src.preprocessing import CAT, CULTURES, NUM, ClippedExp, build_features
+from src.preprocessing import CULTURES, NUM, ClippedExp, build_features
 
+CHEMIN_MODELE = RACINE / "models" / "model_B.joblib"
 CONTEXTE = {"pluie_mm": 1485, "temperature_c": 16.4, "pesticides_kg_ha": 0.17}
 
 
@@ -60,8 +63,16 @@ def test_toutes_les_categories_meme_pour_une_seule_culture():
     assert list(une["Item"].cat.categories) == CULTURES
 
 
-def test_colonnes_exactes_et_dans_lordre():
-    assert list(build_features(**CONTEXTE).columns) == CAT + NUM
+def test_colonnes_alignees_sur_le_modele_entraine():
+    """Référence indépendante : les noms de colonnes figés dans l'artefact au `fit`.
+
+    Comparer `build_features` à `CAT + NUM` ne prouvait rien — la fonction se termine
+    littéralement par `[CAT + NUM]`, elle se comparait à elle-même. Le modèle livré porte
+    `feature_names_in_`, écrit à l'entraînement et indépendant de ce module : c'est ce
+    décalage-là qui produit des prédictions fausses sans lever la moindre erreur.
+    """
+    modele = joblib.load(CHEMIN_MODELE)
+    assert list(build_features(**CONTEXTE).columns) == list(modele.feature_names_in_)
 
 
 def test_une_ligne_par_culture_et_meme_contexte():
@@ -86,33 +97,28 @@ def test_libelles_alignes_sur_le_jeu_dentrainement():
 # --- portabilité de l'artefact --------------------------------------------------------------
 
 
-def test_artefact_se_recharge_dans_un_processus_neuf(tmp_path):
-    """Le test qui vaut tous les autres : charger depuis un interpréteur vierge.
+def test_artefact_se_recharge_dans_un_processus_neuf():
+    """Le test qui vaut tous les autres : charger le modèle livré depuis un interpréteur vierge.
 
-    On fabrique ici un modèle minuscule mais de même forme que celui servi — le point testé
-    est la sérialisation d'`inverse_func`, pas la qualité de la prédiction.
+    Il porte sur `models/model_B.joblib` lui-même et non sur une maquette de même forme :
+    c'est cet artefact-là que l'image Docker embarque et qu'uvicorn chargera.
     """
-    X = np.random.default_rng(0).random((40, 3))
-    modele = TransformedTargetRegressor(
-        regressor=make_pipeline(DummyRegressor()),
-        func=np.log,
-        inverse_func=ClippedExp(np.log(0.058), np.log(49.6)),
-    ).fit(X, 2 + X[:, 0] * 5)
-
-    chemin = tmp_path / "modele.joblib"
-    joblib.dump(modele, chemin)
-    attendu = modele.predict(X[:3])
+    modele = joblib.load(CHEMIN_MODELE)
+    attendu = modele.predict(build_features(**CONTEXTE))
 
     # La classe doit être référencée par son module importable, jamais par __main__.
     assert type(modele.transformer_.inverse_func).__module__ == "src.preprocessing"
 
+    # Le sous-processus reconstruit ses entrées avec build_features : on vérifie du même
+    # coup que la fonction que l'API appelle s'importe hors de tout contexte notebook.
     script = textwrap.dedent(f"""
-        import sys; sys.path.insert(0, {str(Path(__file__).resolve().parents[1])!r})
-        import joblib, numpy as np
-        modele = joblib.load({str(chemin)!r})
-        print(" ".join(f"{{v:.10f}}" for v in modele.predict(np.load({str(tmp_path / "X.npy")!r}))))
+        import sys; sys.path.insert(0, {str(RACINE)!r})
+        import joblib
+        from src.preprocessing import build_features
+        modele = joblib.load({str(CHEMIN_MODELE)!r})
+        rendements = modele.predict(build_features(**{CONTEXTE!r}))
+        print(" ".join(f"{{v:.10f}}" for v in rendements))
     """)
-    np.save(tmp_path / "X.npy", X[:3])
     # check=False : l'échec est précisément ce qu'on veut inspecter, pas propager.
     sortie = subprocess.run(
         [sys.executable, "-c", script], capture_output=True, text=True, check=False
@@ -124,15 +130,12 @@ def test_artefact_se_recharge_dans_un_processus_neuf(tmp_path):
     assert np.allclose([float(v) for v in sortie.stdout.split()], attendu)
 
 
-def test_modele_livre_est_portable():
-    """Le vrai artefact, quand il existe. Ignoré si le notebook n'a pas encore tourné."""
-    chemin = Path(__file__).resolve().parents[1] / "models" / "model_B.joblib"
-    if not chemin.exists():
-        pytest.skip("models/model_B.joblib absent (notebook pas encore exécuté)")
+def test_modele_livre_predit_les_dix_cultures():
+    """Un rendement par culture, tous strictement positifs.
 
-    modele = joblib.load(chemin)
-    assert type(modele.transformer_.inverse_func).__module__ == "src.preprocessing"
-
-    predictions = modele.predict(build_features(**CONTEXTE))
+    La portabilité est couverte par le test précédent, dans un processus neuf ; ici on
+    regarde ce que l'artefact produit, pas la façon dont il se recharge.
+    """
+    predictions = joblib.load(CHEMIN_MODELE).predict(build_features(**CONTEXTE))
     assert len(predictions) == len(CULTURES)
     assert (predictions > 0).all(), "un rendement négatif ou nul n'a pas de sens"

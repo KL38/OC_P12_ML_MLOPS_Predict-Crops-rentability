@@ -1,24 +1,21 @@
 """The API contract: what a caller is entitled to expect from the two endpoints.
 
-Most tests here run against a stand-in model rather than the real artifact, which is not
-versioned (see .gitignore). That is not a compromise: what is checked -- input validation,
-the validity filter, the ordering, and the agreement between /predict and /recommend --
-does not depend on the numbers at all, so CI checks the whole contract without the file.
-The handful of tests that do need real yields are marked and skip on their own.
+Everything here runs against the real artifact, which ships with the repository because
+the Docker image copies it in. Its absence is therefore a failure and not a reason to
+skip: a skipped test passes in silence, and a model missing from the image is precisely
+the kind of breakage that has to turn the run red rather than green.
 """
 
-import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.api import CHEMIN_DOMAINE, CHEMIN_MODELE, RESSOURCES, app
+from src.api import app
 from src.preprocessing import ANNEE_REFERENCE, CULTURES
 
 # A real context, taken from the training range: nothing here is out of domain.
@@ -29,35 +26,12 @@ CONTEXTE = {"pluie_mm": 1485, "temperature_c": 16.4, "pesticides_kg_ha": 0.17}
 TEMPERE = {"pluie_mm": 700, "temperature_c": 5.0, "pesticides_kg_ha": 0.5}
 TROPICALES = {"Cassava", "Plantains and others", "Sweet potatoes", "Yams"}
 
-reel = pytest.mark.skipif(
-    not CHEMIN_MODELE.exists(),
-    reason="models/model_B.joblib absent (notebook pas exécuté)",
-)
-
-
-class ModeleTemoin:
-    """The served model's interface, fixed values, no training.
-
-    One distinct yield per crop so that the ordering assertions actually discriminate.
-    Nothing here says anything about prediction quality, and nothing is meant to.
-    """
-
-    def predict(self, X):
-        return np.array([1.0 + CULTURES.index(item) for item in X["Item"]])
-
 
 @pytest.fixture(scope="module")
 def client():
-    if CHEMIN_MODELE.exists():
-        with TestClient(app) as vrai:  # the `with` is what runs lifespan
-            yield vrai
-        return
-
-    # No artifact: inject by hand what lifespan would have loaded, and skip lifespan.
-    RESSOURCES["modele"] = ModeleTemoin()
-    RESSOURCES["domaine"] = json.loads(CHEMIN_DOMAINE.read_text(encoding="utf-8"))
-    yield TestClient(app)
-    RESSOURCES.clear()
+    """The `with` block is what runs lifespan, and therefore what loads the model."""
+    with TestClient(app) as connecte:
+        yield connecte
 
 
 # --- Ce que l'API refuse --------------------------------------------------------------
@@ -185,10 +159,9 @@ def test_health_porte_les_cultures_et_la_reserve(client):
     assert str(ANNEE_REFERENCE) in corps["avertissement"]
 
 
-# --- Avec le vrai artefact ---------------------------------------------------------------
+# --- Les valeurs servies ------------------------------------------------------------------
 
 
-@reel
 def test_les_rendements_servis_sont_plausibles(client):
     """Fourchette du ClippedExp embarqué : rien ne sort des rendements vus à l'entraînement."""
     cultures = client.post("/recommend", json=CONTEXTE).json()["cultures"]
@@ -196,7 +169,6 @@ def test_les_rendements_servis_sont_plausibles(client):
     assert all(0 < c["rendement_t_ha"] <= 49.6 for c in cultures)
 
 
-@reel
 def test_une_annee_posterieure_a_2013_ne_change_rien(client):
     """Ce que la réserve annonce, vérifié : l'arbre sature sur sa dernière coupure.
 
