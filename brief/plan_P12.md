@@ -283,13 +283,31 @@ Range les colonnes par niveau de variation :
 **−0,003**. Aucun signal, mais une dimension d'empreinte de pays en plus. Elle reste l'**ingrédient** de
 `pesticides_kg_per_ha`, rien de plus.
 
-**2. Garder `Year` à l'entraînement, la figer à l'inférence.** Contre-intuitif mais essentiel : si on
-retire l'année, **la tendance temporelle est absorbée par les pesticides**, puisque les deux montent
-ensemble (§13). Le modèle dirait alors « les pesticides font monter le rendement » — exactement l'erreur
-qu'on veut éviter. Garder `Year` protège le reste du modèle.
-À l'inférence, les données s'arrêtent en 2013 et les utilisateurs sont en 2026 : **figer `Year = 2013`**
-côté API. Un modèle à base d'arbres saturerait de toute façon sur la feuille 2013 ; un linéaire
-extrapolerait 13 ans de tendance dans le vide.
+**2. Garder `Year` à l'entraînement, transmettre l'année réelle à l'inférence.** Contre-intuitif mais
+essentiel : si on retire l'année, **la tendance temporelle est absorbée par les pesticides**, puisque les
+deux montent ensemble (§13). Le modèle dirait alors « les pesticides font monter le rendement » —
+exactement l'erreur qu'on veut éviter. Garder `Year` protège le reste du modèle.
+
+À l'inférence, **aucune date codée en dur** : l'API transmet l'année courante. Le finaliste est HistGB, et
+un arbre plafonne sur son dernier seuil, appris sur des données arrêtées en 2013 — la prédiction pour 2026
+est donc **identique, au bit près**, à celle de 2013. Figer la date ne changerait aucun résultat, tandis
+qu'une constante `2013` dans le code laisserait croire à un traitement qui n'existe pas. Le décalage
+temporel est porté par un **disclaimer dans l'application** (§7), pas par une constante.
+
+> ⚠️ **Hypothèse assumée** : ce choix repose sur une famille de modèles **à base d'arbres**. Un modèle
+> linéaire, lui, extrapolerait 13 ans de tendance dans le vide. Décision prise en connaissance de cause, à
+> réexaminer si la famille de modèle change.
+
+**Aucune correction de tendance n'est appliquée.** Les rendements progressent de **+1,34 %/an** dans les
+données (médiane 3,62 → 4,95 t/ha entre 1990 et 2013), soit **~+19 % cumulés** entre 2013 et 2026 : le
+modèle sous-estime donc vraisemblablement d'autant, et de façon **systématique** — c'est un biais orienté,
+pas du bruit. Corriger reviendrait à extrapoler une tendance 13 ans au-delà des observations sans pouvoir
+la valider : de la fausse précision. La vraie réponse est un réentraînement sur données récentes ; à
+défaut, on **annonce** le biais.
+
+*Mesure disponible* : le protocole temporel (§ ci-dessous) chiffre exactement cette situation — entraîné
+jusqu'en 2008, le modèle sature et applique son comportement de 2008 aux années suivantes. Coût constaté
+sur 5 ans d'horizon : **+34 % de RMSE** (2,60 → 3,48). L'application en demande 13, c'est donc un plancher.
 
 **3. Découper les pesticides en deux colonnes** (décomposition intra/inter, dite de Mundlak) :
 - `pesticides_pays_moyen` — moyenne du pays sur la période : le **niveau d'intensification** ;
@@ -437,8 +455,8 @@ modèle à l'Étape 3.
 
 **Endpoints :** `POST /predict` · `POST /recommend` · `GET /health`. Validation Pydantic.
 
-Côté API : `Year` figée à 2013, clip à 0 des prédictions négatives, filtre de domaine de validité sur
-`/recommend` (§7).
+Côté API : `Year` = **année courante**, jamais codée en dur (§5), clip à 0 des prédictions négatives,
+filtre de domaine de validité sur `/recommend` (§7).
 
 ### 🅰️ Docker Compose local vs 🅱️ Déploiement cloud
 
@@ -506,6 +524,21 @@ Ce que ça implique, et qui doit être tenu :
   **percentiles p5/p95**.
 - **⚠️ Fiabilité inégale selon la culture** : de 477 observations (Yams) à 2 270 (Potatoes). Afficher une
   réserve sur les cultures peu documentées.
+- **⚠️ Disclaimer temporel** — la contrepartie de la décision n°2 du §5 (pas de date figée, pas de
+  correction de tendance). À afficher en permanence, pas dans un pli dépliable :
+
+  > *Le modèle s'appuie sur des données agricoles mondiales couvrant 1990-2013. Il décrit la relation
+  > entre climat, intrants et rendement telle qu'observée sur cette période — il ne projette pas les
+  > progrès agronomiques survenus depuis. Les rendements ayant augmenté d'environ 1,3 %/an sur la période
+  > observée, les valeurs affichées sont vraisemblablement **sous-estimées d'environ 20 %** aujourd'hui.
+  > À utiliser pour **comparer des cultures entre elles**, pas comme objectif chiffré absolu.*
+
+  Les deux endpoints n'y sont pas exposés de la même façon, et c'est ce qui rend cette formulation
+  défendable : `/predict` renvoie une valeur absolue, directement touchée ; `/recommend` renvoie un
+  **classement**, largement préservé puisque le biais joue dans le même sens pour toutes les cultures.
+  Largement, pas totalement — les tendances diffèrent (maïs +2,61 %/an contre plantain +0,36 %/an), donc
+  le gel relatif défavorise les cultures en progrès rapide. À mentionner en soutenance si la question
+  vient.
 
 **Livrables :** `app.py`, `requirements.txt`.
 
@@ -575,7 +608,8 @@ et garder un échantillon versionné (~5 000 lignes) pour que la CI puisse tourn
 | **Doublons de `yield_df.csv` → fuite de données** | 🔴 confirmé | `temp.csv` agrégé par pays ; `GroupKFold` à l'évaluation |
 | **Collision `China` / `China, mainland`** | 🔴 **nouveau v4** | Écarter l'agrégat **avant** le mapping + `assert` d'unicité de clé |
 | **HPO qui optimise la mémorisation** | 🟠 **nouveau v4** | Recherche d'hyperparamètres sous `GroupKFold` par pays (§5) |
-| **`Year` extrapolée à 2026** | 🟠 **nouveau v4** | Figer `Year = 2013` côté API (§5) |
+| **`Year` extrapolée à 2026** | 🟢 **sans objet** | HistGB est un arbre : il plafonne, prédiction 2026 = prédiction 2013 au bit près. Rien à figer (§5) |
+| **Modèle daté — biais à la baisse ~19 % en 2026** | 🟠 **nouveau v4** | Assumé : aucune correction, disclaimer permanent dans l'app (§7), chiffré par le protocole temporel (§5) |
 | **Dtype `category` perdu à la sérialisation JSON** | 🟠 **nouveau v4** | `signature=` + `input_example=` au `log_model`, sinon panne découverte au déploiement (§5) |
 | **R² surestimé par mémorisation d'empreinte** | 🟠 confirmé | Annoncer les 3 chiffres (§5) ; expliquer par le §13 |
 | **Recommandation hors domaine climatique** | 🟠 confirmé | Filtre de validité p5/p95 (§7) |

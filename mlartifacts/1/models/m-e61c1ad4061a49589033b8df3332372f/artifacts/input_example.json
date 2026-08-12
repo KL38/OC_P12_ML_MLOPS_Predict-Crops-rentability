@@ -1,0 +1,1 @@
+{"columns": ["Item", "Year", "average_rain_fall_mm_per_year", "avg_temp", "pesticides_kg_per_ha"], "data": [["Maize", 1990, 89.0, 17.48, 0.2395442043222004], ["Maize", 1991, 89.0, 16.26, 0.3153727901614143], ["Maize", 1992, 89.0, 16.27, 0.1501692611811218]]}
