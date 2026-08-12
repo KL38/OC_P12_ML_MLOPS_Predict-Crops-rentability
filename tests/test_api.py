@@ -100,7 +100,11 @@ def test_climat_tempere_ecarte_les_quatre_tropicales(client):
     cultures = client.post("/recommend", json=TEMPERE).json()["cultures"]
     ecartees = {c["culture"] for c in cultures if not c["cultivable"]}
     assert ecartees == TROPICALES
-    assert all("température" in c["motif"] for c in cultures if not c["cultivable"])
+    # Insensible à la casse : ce qui est testé est que le motif nomme la BONNE variable,
+    # pas la formulation exacte, qui reste libre de bouger.
+    assert all(
+        "température" in c["motif"].lower() for c in cultures if not c["cultivable"]
+    )
 
 
 def test_pluviometrie_hors_domaine_donne_son_propre_motif(client):
@@ -109,7 +113,7 @@ def test_pluviometrie_hors_domaine_donne_son_propre_motif(client):
     cultures = client.post("/recommend", json=aride).json()["cultures"]
     manioc = next(c for c in cultures if c["culture"] == "Cassava")
     assert not manioc["cultivable"]
-    assert "pluviométrie" in manioc["motif"]
+    assert "pluviométrie" in manioc["motif"].lower()
 
 
 def test_toutes_les_cultures_sont_rendues_meme_ecartees(client):

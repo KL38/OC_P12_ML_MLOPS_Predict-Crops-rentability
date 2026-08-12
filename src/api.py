@@ -35,7 +35,7 @@ CHEMIN_DOMAINE = RACINE / "models" / "domaine_validite.json"
 
 AVERTISSEMENT = (
     f"Les données d'entraînement s'arrêtent en {ANNEE_REFERENCE}, où les rendements "
-    "progressaient alors d'environ 1,3 %/an de manière stable : les valeurs rendues sont donc"
+    "progressaient alors d'environ 1,3 %/an de manière stable : les valeurs rendues sont donc "
     "potentiellement sous-estimées d'à peu près 20 % aujourd'hui. Par simplification, "
     "aucune correction de tendance n'a été appliquée."
 )
