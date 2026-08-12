@@ -110,7 +110,7 @@ class Contexte(BaseModel):
 
 
 class RequetePredict(Contexte):
-    culture: CultureConnue = Field(
+    culture: CultureConnue = Field( # type: ignore
         description="Culture à évaluer, parmi les dix connues du modèle.",
         examples=["Maize"],
     )
