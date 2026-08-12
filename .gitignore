@@ -12,8 +12,11 @@ mlflow.db
 # Logs d'entraînement CatBoost
 catboost_info/
 
-# Modèles entraînés
-models/*.joblib
+# models/model_B.joblib est VOLONTAIREMENT versionné (217 Ko) : c'est ce que le Dockerfile
+# copie dans l'image. Sans lui dans le dépôt, un `docker build` sur un runner GitHub n'a
+# rien à embarquer et l'API ne démarre pas. Le tirer de MLflow au build supposerait un
+# serveur joignable depuis le runner — de la complexité pour aucun bénéfice à cette taille.
+# La traçabilité reste portée par le registre MLflow (alias @champion), pas par git.
 
 # Environnement Python
 .venv/

@@ -1,10 +1,14 @@
 name: CI
 
-# Le jeu de données et le modèle entraîné ne sont pas versionnés (voir .gitignore) :
-# les tests qui en dépendent se désactivent d'eux-mêmes (pytest.skip). Ce qui est vérifié
-# ici est le contrat partagé entre le notebook et l'API — dont la portabilité de
-# l'artefact, la seule panne du projet qui passait tous les contrôles locaux et n'aurait
-# éclaté qu'au déploiement.
+# Ce que la CI protège réellement : le contrat partagé entre le notebook et l'API. Le jeu
+# de données et le modèle entraîné ne sont pas versionnés (voir .gitignore), donc les tests
+# qui en dépendent se désactivent d'eux-mêmes — mais la portabilité de l'artefact, elle,
+# est vérifiée dans un interpréteur neuf. C'est la seule panne du projet qui passait tous
+# les contrôles locaux et n'aurait éclaté qu'au déploiement.
+#
+# Deux jobs volontairement PARALLÈLES et non enchaînés : un échec de lint et un échec de
+# test sont deux informations distinctes, et on veut les deux au même run. Les enchaîner
+# économiserait des minutes de runner au prix d'un aller-retour de plus à chaque fois.
 
 on:
   push:
@@ -13,30 +17,46 @@ on:
   workflow_dispatch:
 
 jobs:
-  lint-and-test:
-    name: Lint & tests
+  lint:
+    name: Lint & format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       # Version complète et non `@v9` : setup-uv ne publie plus de tag majeur flottant
-      # depuis v7, `@v9` ne se résout donc pas. Épingler la version exacte est de toute
-      # façon la bonne pratique — le CI ne peut pas casser sur une mise à jour de l'action.
+      # depuis v7. Épingler la version exacte est de toute façon la bonne pratique — la CI
+      # ne peut pas casser sur une mise à jour de l'action.
       - name: Installer uv
         uses: astral-sh/setup-uv@v9.0.0
         with:
           enable-cache: true
 
-      # Le groupe dev (pytest, ruff) est inclus par défaut : `--dev` n'est pas un flag uv,
-      # seul `--no-dev` existe pour l'exclure.
+      # --locked : échoue si uv.lock ne correspond plus à pyproject.toml, au lieu de
+      # re-résoudre en silence. Une CI qui installe autre chose que le poste de dev ne
+      # prouve rien. Le groupe dev (pytest, ruff, httpx) est inclus par défaut ; seul
+      # `--no-dev` l'exclut.
       - name: Installer les dépendances
-        run: uv sync
+        run: uv sync --locked
 
-      - name: Lint (ruff)
+      - name: Erreurs et code mort (ruff check)
         run: uv run ruff check src tests
 
-      - name: Format (ruff)
+      - name: Mise en forme (ruff format)
         run: uv run ruff format --check src tests
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Installer les dépendances
+        run: uv sync --locked
 
       - name: Tests (pytest)
         run: uv run pytest tests -v
