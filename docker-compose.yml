@@ -1,0 +1,42 @@
+# Démo locale complète : API + front, sans rien installer d'autre que Docker.
+#
+#     docker compose up --build      puis  http://localhost:8501
+#
+# C'est le repli garanti hors ligne pour la soutenance : si le déploiement cloud est
+# indisponible le jour J, cette commande suffit.
+#
+# Pas de clé `version:` — elle est obsolète depuis Compose V2 et provoque un avertissement.
+
+services:
+  api:
+    build: .
+    image: agritech-api:local
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  front:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: agritech-front:local
+    ports:
+      - "8501:8501"
+    environment:
+      # Sur le réseau interne de Compose, le nom du service fait office de nom d'hôte.
+      # C'est exactement ce que la variable API_URL du front attend.
+      API_URL: http://api:8000
+    depends_on:
+      api:
+        # Et non un simple `depends_on: [api]`, qui n'attend que le démarrage du conteneur.
+        # Ici on attend que /health réponde, donc que le modèle soit chargé.
+        condition: service_healthy

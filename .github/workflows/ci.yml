@@ -33,10 +33,13 @@ jobs:
 
       # --locked : échoue si uv.lock ne correspond plus à pyproject.toml, au lieu de
       # re-résoudre en silence. Une CI qui installe autre chose que le poste de dev ne
-      # prouve rien. Le groupe dev (pytest, ruff, httpx) est inclus par défaut ; seul
-      # `--no-dev` l'exclut.
+      # prouve rien.
+      #
+      # --no-default-groups --group dev : les dépendances de l'API plus l'outillage de
+      # test. Le groupe `notebooks` (catboost, mlflow, jupyter) n'a rien à faire ici, et
+      # `app` non plus — ruff analyse le front sans avoir besoin de streamlit installé.
       - name: Installer les dépendances
-        run: uv sync --locked
+        run: uv sync --locked --no-default-groups --group dev
 
       # `app` est inclus : le front est du code livré, au même titre que l'API.
       - name: Erreurs et code mort (ruff check)
@@ -57,7 +60,53 @@ jobs:
           enable-cache: true
 
       - name: Installer les dépendances
-        run: uv sync --locked
+        run: uv sync --locked --no-default-groups --group dev
 
       - name: Tests (pytest)
         run: uv run pytest tests -v
+
+  build:
+    name: Image Docker
+    # `test → build`, l'ordre que demande le brief : on ne construit pas une image à
+    # partir d'un code dont les tests échouent. C'est aussi ce qui rend le job parlant —
+    # une image verte ici a franchi lint et tests.
+    needs: [lint, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # BuildKit explicite : le Dockerfile utilise `--mount=type=cache` et
+      # `--mount=type=bind`, que le constructeur historique ne comprend pas.
+      # v4 et non v3 : comme pour setup-uv, le tag majeur courant se vérifie.
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Construire les deux images
+        run: docker compose build
+
+      # `--wait` s'appuie sur le HEALTHCHECK de l'image : la commande ne rend la main que
+      # lorsque /health répond, donc lorsque le modèle est effectivement chargé.
+      - name: Démarrer la pile
+        run: docker compose up --detach --wait
+
+      # Une image qui se construit ne prouve rien ; une image qui prédit, si. Même leçon
+      # que la portabilité de l'artefact : ce genre de panne n'apparaît qu'à l'exécution.
+      - name: L'API sert-elle vraiment ?
+        run: |
+          curl -fsS http://localhost:8000/health | grep -q '"statut":"ok"'
+          curl -fsS -X POST http://localhost:8000/predict \
+            -H 'content-type: application/json' \
+            -d '{"pluie_mm":1030,"temperature_c":20.4,"pesticides_kg_ha":0.9,"culture":"Maize"}' \
+            | grep -q '"rendement_t_ha"'
+
+      - name: Le front répond-il ?
+        run: curl -fsS -o /dev/null http://localhost:8501/_stcore/health
+
+      # Sans ça, un échec ne montre qu'un curl rouge, jamais la raison côté conteneur.
+      - name: Journaux des conteneurs
+        if: failure()
+        run: docker compose logs
+
+      - name: Arrêter la pile
+        if: always()
+        run: docker compose down --volumes

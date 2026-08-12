@@ -1,0 +1,30 @@
+# Ce qui n'a rien à faire dans le contexte de build. Sans ce fichier, Docker enverrait au
+# démon les ~110 Mo de data/, tout mlruns/ et les notebooks — à chaque build, pour les
+# jeter ensuite.
+#
+# Ce fichier s'applique aux DEUX images (API et front), qui partagent le même contexte :
+# ne pas exclure app/ ni .streamlit/, dont le front a besoin.
+
+.git/
+.github/
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+
+# Données sources et artefacts d'entraînement. Seuls models/*.joblib et le JSON du domaine
+# de validité partent dans l'image, et ils sont copiés explicitement.
+data/
+mlruns/
+mlartifacts/
+mlflow.db
+catboost_info/
+notebooks/
+figures/
+livrables/
+brief/
+
+# Les tests tournent en CI, pas dans l'image servie.
+tests/

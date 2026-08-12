@@ -1,37 +1,53 @@
 [project]
 name = "oc-p12"
 version = "0.1.0"
-description = "Add your description here"
+description = "Prédiction de rendements agricoles et recommandation de culture"
 readme = "README.md"
 requires-python = ">=3.12"
+
+# UNIQUEMENT ce dont l'API a besoin pour servir le modèle. Tout le reste vit dans un
+# groupe, et c'est ce découpage qui rend l'image Docker viable : sans lui, `uv sync`
+# y installerait catboost, mlflow, jupyter et matplotlib, soit plusieurs centaines de
+# mégaoctets pour un service qui charge un fichier de 217 Ko.
+#
+# joblib est déclaré alors qu'il arrive avec scikit-learn : `src/api.py` l'importe
+# directement, et une dépendance transitive peut disparaître à la prochaine résolution.
 dependencies = [
-    "catboost>=1.2.10",
-    "faostat>=2.0.1",
     "fastapi>=0.141.1",
-    "ipykernel>=7.3.0",
-    "jupyter>=1.1.1",
-    "matplotlib>=3.11.1",
-    "mlflow>=3.15",
+    "joblib>=1.5",
     "numpy>=2.5.1",
     "pandas>=2.3,<3",
-    # Le front interroge l'API avec requests. Présent en transitif via mlflow, mais une
-    # dépendance transitive peut disparaître à la prochaine résolution : on la déclare.
-    "requests>=2.32",
     "scikit-learn>=1.9.0",
-    "seaborn>=0.13.2",
-    "streamlit>=1.61.1",
     "uvicorn>=0.52.1",
 ]
 
 [dependency-groups]
+# Entraînement et analyse : rien de tout cela ne tourne en production.
+notebooks = [
+    "catboost>=1.2.10",
+    "faostat>=2.0.1",
+    "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.1",
+    "mlflow>=3.15",
+    "seaborn>=0.13.2",
+]
+# Le front. Il a aussi son propre app/requirements.txt, que lisent Streamlit Community
+# Cloud et son image Docker ; ce groupe sert au confort local (`uv run streamlit ...`).
+app = [
+    "requests>=2.32",
+    "streamlit>=1.61.1",
+]
 dev = [
-    # httpx est le client de fastapi.testclient. Il est déjà présent en transitif, mais
-    # une dépendance transitive peut disparaître à la prochaine résolution : déclarée ici,
-    # la CI ne peut pas casser sur une mise à jour sans rapport.
     "httpx>=0.28.1",
     "pytest>=9.1.1",
     "ruff>=0.16.2",
 ]
+
+[tool.uv]
+# `uv sync` sans argument installe donc tout, comme avant : le poste de travail ne change
+# pas. Seuls le Dockerfile (`--no-default-groups`) et la CI (`--group dev`) se restreignent.
+default-groups = ["dev", "notebooks", "app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

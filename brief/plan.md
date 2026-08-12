@@ -46,13 +46,19 @@ le message d'erreur quand l'API est coupée.
 - `docker-compose.yml` — API + front, `API_URL=http://api:8000` côté front. C'est la démo
   de secours garantie hors ligne.
 
-### 3. Livraison continue *(Étape 5 du brief)*
+### 3. ~~Livraison continue~~ — écartée
 
-- Ajouter un job **`image`** à `ci.yml` : `docker build` **sans push**, pour qu'une PR
-  prouve que l'image se construit.
-- Créer **`cd.yml`** (push sur `main`) : `publish` (build + push Docker Hub) puis `deploy`.
-- **Prérequis Kevin** : compte Docker Hub, puis secrets `DOCKERHUB_USERNAME` et
-  `DOCKERHUB_TOKEN` dans *Settings → Secrets and variables → Actions*.
+Le brief est explicite : le **Build est obligatoire**, le **Déploiement est *« optionnel
+mais fortement recommandé »***. Décision prise : **pas de cloud**, la démo est le
+`docker compose up` local. Le job `build` de `ci.yml` couvre donc l'exigence, sans registre,
+sans compte externe et **sans un seul secret**.
+
+Si le sujet revient : `ghcr.io` permettrait de publier l'image sans créer de compte ni
+saisir de secret (le `GITHUB_TOKEN` d'Actions y suffit). Docker Hub imposerait un compte
+et deux secrets.
+
+Conséquence : le correctif `st.secrets` pour `API_URL` **n'a plus lieu d'être** — Streamlit
+Community Cloud en était la seule justification.
 
 ### 4. README *(livrable noté, actuellement vide)*
 
