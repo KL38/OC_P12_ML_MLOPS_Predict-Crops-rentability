@@ -1,11 +1,11 @@
 crop,yield_t_per_ha,price_usd_per_tonne,seed_cost_usd_per_ha
 Potatoes,16.00,240,1000
-Cassava,10.00,125,75
-Plantains and others,9.53,350,150
+Cassava,10.00,150,75
+Plantains and others,9.53,300,150
 Yams,9.15,400,450
-Sweet potatoes,8.65,250,150
-Rice paddy,3.47,425,80
+Sweet potatoes,8.65,200,150
+Rice paddy,3.47,390,80
 Maize,2.52,215,115
 Wheat,2.41,275,80
-Soybeans,1.62,475,70
+Soybeans,1.62,400,70
 Sorghum,1.26,235,30

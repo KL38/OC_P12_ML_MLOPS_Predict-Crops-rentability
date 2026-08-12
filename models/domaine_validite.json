@@ -1,62 +1,62 @@
 {
   "Cassava":{
-    "temp_min":14.5928823529,
-    "temp_max":28.453,
-    "pluie_min":282.0,
-    "pluie_max":2875.0
+    "temp_min":6.462,
+    "temp_max":32.598,
+    "pluie_min":135.9,
+    "pluie_max":3564.0
   },
   "Maize":{
-    "temp_min":8.0638333333,
-    "temp_max":27.8,
-    "pluie_min":89.0,
-    "pluie_max":2387.0
+    "temp_min":0.885,
+    "temp_max":33.105,
+    "pluie_min":50.4,
+    "pluie_max":3564.0
   },
   "Plantains and others":{
-    "temp_min":15.964,
-    "temp_max":27.4885,
-    "pluie_min":1071.0,
-    "pluie_max":2387.0
+    "temp_min":6.717,
+    "temp_max":29.793,
+    "pluie_min":567.0,
+    "pluie_max":3564.0
   },
   "Potatoes":{
-    "temp_min":6.2653333333,
-    "temp_max":27.79,
-    "pluie_min":83.0,
-    "pluie_max":2274.0
+    "temp_min":-1.612,
+    "temp_max":33.332,
+    "pluie_min":50.4,
+    "pluie_max":3564.0
   },
   "Rice, paddy":{
-    "temp_min":9.41,
-    "temp_max":27.829,
-    "pluie_min":216.6,
-    "pluie_max":2686.25
+    "temp_min":0.885,
+    "temp_max":33.105,
+    "pluie_min":80.1,
+    "pluie_max":3564.0
   },
   "Sorghum":{
-    "temp_min":9.24,
-    "temp_max":27.934,
-    "pluie_min":151.0,
-    "pluie_max":2274.0
+    "temp_min":0.885,
+    "temp_max":33.105,
+    "pluie_min":53.1,
+    "pluie_max":3564.0
   },
   "Soybeans":{
-    "temp_min":7.979,
-    "temp_max":27.561,
-    "pluie_min":250.0,
-    "pluie_max":2331.0
+    "temp_min":0.986,
+    "temp_max":31.994,
+    "pluie_min":194.4,
+    "pluie_max":3564.0
   },
   "Sweet potatoes":{
-    "temp_min":10.233,
-    "temp_max":28.068,
-    "pluie_min":324.4,
-    "pluie_max":2387.0
+    "temp_min":6.462,
+    "temp_max":32.598,
+    "pluie_min":74.7,
+    "pluie_max":3162.5
   },
   "Wheat":{
-    "temp_min":6.0445,
-    "temp_max":27.55,
-    "pluie_min":89.0,
-    "pluie_max":1976.0
+    "temp_min":-1.612,
+    "temp_max":33.332,
+    "pluie_min":50.4,
+    "pluie_max":3564.0
   },
   "Yams":{
-    "temp_min":15.4070833333,
-    "temp_max":28.517,
-    "pluie_min":282.0,
-    "pluie_max":3240.0
+    "temp_min":12.514,
+    "temp_max":30.946,
+    "pluie_min":253.8,
+    "pluie_max":3564.0
   }
 }

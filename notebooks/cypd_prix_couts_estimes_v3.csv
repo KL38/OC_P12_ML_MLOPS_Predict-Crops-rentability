@@ -1,0 +1,11 @@
+crop,yield_t_per_ha,price_usd_per_tonne,seed_cost_usd_per_ha,seed_share_of_opex_pct,total_opex_usd_per_ha
+Potatoes,16.00,240,1000,25,4000
+Cassava,10.00,150,75,9,833
+Plantains and others,9.53,300,150,10,1500
+Yams,9.15,400,450,35,1286
+Sweet potatoes,8.65,200,150,8,1875
+Rice paddy,3.47,390,80,8,1000
+Maize,2.52,215,115,12,958
+Wheat,2.41,275,80,10,800
+Soybeans,1.62,400,70,14,500
+Sorghum,1.26,235,30,6,500

@@ -1,10 +1,10 @@
 crop,yield_t_per_ha,price_usd_per_tonne,target_margin_usd_per_ha,total_opex_usd_per_ha
-Potatoes,16.0,240,1200,2640
-Cassava,10.0,150,600,900
+Potatoes,16.00,240,1200,2640
+Cassava,10.00,150,600,900
 Plantains and others,9.53,300,1400,1460
 Yams,9.15,400,1500,2160
 Sweet potatoes,8.65,200,700,1030
-"Rice, paddy",3.47,390,450,900
+Rice paddy,3.47,390,450,900
 Maize,2.52,215,250,290
 Wheat,2.41,275,280,385
 Soybeans,1.62,400,300,350
