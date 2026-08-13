@@ -19,7 +19,7 @@
     Un modèle unique, servi par une API, interrogé par une interface — pour aider un
     agriculteur à choisir quoi semer.
     <br />
-    <a href="brief/plan.md"><strong>Plan de travail »</strong></a>
+    <a href="#à-propos-du-projet"><strong>Découvrir le projet »</strong></a>
     <br />
     <br />
     <a href="#démarrage">Démarrage</a>
@@ -78,10 +78,12 @@ Modifier un prix reclasse l'affichage sans relancer la moindre requête.
 
 ```mermaid
 flowchart LR
-    U(["Agriculteur"]) -->|navigateur| S["<b>Streamlit</b><br/>app/app.py<br/>aucune logique ML"]
-    S -->|"POST /predict<br/>POST /recommend"| A["<b>FastAPI</b><br/>src/api.py"]
-    A --> M[("model_B.joblib<br/>domaine_validite.json")]
-    S -.->|table éditable| P[("prix_couts.csv")]
+    U(["Agriculteur"]) -->|navigateur| S["Streamlit · app/app.py"]
+    S -->|POST /predict| A["FastAPI · src/api.py"]
+    S -->|POST /recommend| A
+    A --> M[("model_B.joblib")]
+    A --> D[("domaine_validite.json")]
+    S -.->|table éditable à l'écran| P[("prix_couts.csv")]
 ```
 
 Deux garde-fous distincts, et la distinction est volontaire :
@@ -90,9 +92,6 @@ Deux garde-fous distincts, et la distinction est volontaire :
 |---|---|---|
 | **Pydantic** | l'impossible physiquement — pluie négative, −300 °C, culture inconnue | `422`, champ fautif nommé, rien n'est prédit |
 | **Domaine de validité** | l'invraisemblable agronomiquement — du manioc à 5 °C | `200` avec `cultivable: false` et le motif |
-
-Un modèle à base d'arbres ne refuse jamais de prédire : sans ce second garde-fou, il
-afficherait un rendement parfaitement plausible là où aucune observation n'a jamais existé.
 
 ### Construit avec
 
@@ -197,10 +196,11 @@ badge en haut de cette page.
 
 ```mermaid
 flowchart LR
-    P(["push / PR"]) --> L["<b>Lint et format</b><br/>ruff check<br/>ruff format --check"]
-    P --> T["<b>Tests</b><br/>pytest"]
-    L --> B["<b>Image Docker</b><br/>compose build<br/>up --wait<br/>appels réels"]
+    P(["push · PR · manuel"]) --> L["Lint et format"]
+    P --> T["Tests"]
+    L --> B["Image Docker"]
     T --> B
+    B --> V(["API interrogée pour de vrai"])
 ```
 
 | Job | Ce qu'il garantit |
@@ -209,27 +209,21 @@ flowchart LR
 | **Tests** | 26 tests, dont la **portabilité de l'artefact** vérifiée dans un interpréteur neuf |
 | **Image Docker** | les deux images se construisent, la pile démarre, **et l'API prédit réellement** |
 
-`Lint` et `Tests` tournent **en parallèle** : un échec de lint et un échec de test sont
-deux informations distinctes, autant les obtenir au même run. `Image Docker` attend les
-deux — on ne construit pas une image à partir d'un code dont les tests échouent.
+`Lint` et `Tests` tournent **en parallèle**. `Image Docker` attend les
+deux pour ne pas construire une image à partir d'un code dont les tests échouent.
 
 ### Ce que le job d'image vérifie vraiment
 
-Une image qui se construit ne prouve rien. Le job démarre la pile, puis appelle
-l'API : `/health` doit renvoyer `"statut":"ok"`, et `/predict` un rendement. C'est la
-leçon du bug le plus coûteux du projet — une fonction de notebook sérialisée par
-référence se rechargeait parfaitement dans le notebook et échouait *uniquement* sous
-uvicorn. Ce genre de panne n'apparaît qu'à l'exécution.
+Le job monte l'image, puis appelle
+l'API : `/health`, qui doit renvoyer `"statut":"ok"`, et `/predict` un rendement.
 
 ### En cas d'échec
 
 Le workflow s'arrête au premier job rouge et GitHub notifie l'auteur du push. Le job
-d'image ajoute une étape `docker compose logs` conditionnée à l'échec : sans elle, on ne
-verrait qu'un `curl` rouge, jamais la raison côté conteneur. La pile est arrêtée dans tous
-les cas.
+d'image ajoute une étape `docker compose logs` conditionnée à l'échec.
 
 Le déploiement continu est **hors périmètre**, un choix assumé : le brief le qualifie
-d'« optionnel mais fortement recommandé », et la démonstration repose sur
+d'« optionnel mais fortement recommandé », mais la démonstration repose sur
 `docker compose up`, qui ne dépend d'aucun service tiers.
 
 <p align="right">(<a href="#readme-top">retour en haut</a>)</p>
@@ -239,35 +233,76 @@ d'« optionnel mais fortement recommandé », et la démonstration repose sur
 **HistGradientBoosting** entraîné sur `log(rendement)`, sélectionné parmi cinq familles de
 modèles au terme de 14 expérimentations suivies dans MLflow.
 
+### La validation groupée par pays — le choix qui décide de tout
+
+Toute la modélisation repose sur une décision prise avant le premier entraînement :
+**aucun pays du jeu de test n'apparaît dans le jeu d'entraînement**. `GroupKFold` en
+validation croisée, `GroupShuffleSplit` pour le passage final sur le test.
+
+Ce n'est pas un détail de protocole. Même modèle, mêmes hyperparamètres, mêmes données —
+seul le découpage change :
+
+| Découpage | R² du modèle | R² d'un `DummyRegressor` |
+|---|---|---|
+| **Groupé par pays** — 22 pays jamais vus | **0,595** | −0,150 |
+| Aléatoire — les mêmes pays des deux côtés | 0,760 | −0,148 |
+
+Le témoin rend la lecture indiscutable : un modèle qui n'apprend rien obtient le **même**
+score sur les deux découpages (−0,150 contre −0,148). Les deux jeux de test sont donc
+d'égale difficulté, et la totalité de l'écart 0,595 → 0,760 est de la **mémorisation** — le
+modèle reconnaît des pays qu'il a déjà vus.
+
+Annoncer 0,760 aurait été plus flatteur et sans valeur : en production, l'utilisateur décrit
+une région que le modèle n'a jamais rencontrée. Tous les chiffres ci-dessous sont donc les
+chiffres groupés — les plus bas, et les seuls honnêtes.
+
 | | Valeur |
 |---|---|
-| Protocole | `GroupKFold` **par pays** |
+| Protocole de validation croisée | `GroupKFold(5)` **par pays** |
 | R² validation croisée | 0,595 |
 | R² test | **0,627** |
 | RMSE test | **4,94 t/ha** |
 | MAE test | 2,85 t/ha |
-| Entraînement | 87 pays, 1990-2013, 10 cultures |
-| Test | 22 pays **jamais vus** |
-
-Le protocole groupé par pays est celui qui décide. Un découpage aléatoire mesurerait
-surtout la mémorisation : le couple (pluviométrie, température) identifie le pays sans
-ambiguïté, et le score annoncé serait flatteur autant qu'inutile.
+| Entraînement | 11 550 lignes, 87 pays, 1990-2013, 10 cultures |
+| Test | 2 821 lignes, 22 pays **jamais vus** |
 
 ### Ce qui pèse dans la prédiction
 
-Importance par permutation, sur le jeu de test :
+Importance par permutation sur les 22 pays de test, en points de RMSLE perdus quand une
+colonne est remplacée par du bruit. Elle mesure si le modèle a **raison** de se servir
+d'une variable — pas s'il s'en sert.
 
-| Variable | Importance |
+| Variable | Importance | σ (20 répétitions) | Valeurs distinctes par pays |
+|---|---|---|---|
+| Culture (`Item`) | **+0,709** | 0,010 | — |
+| Pesticides | +0,120 | 0,006 | 23 |
+| Température | +0,033 | 0,002 | 21 |
+| Année | +0,008 | 0,001 | 23 |
+| Pluviométrie | −0,003 | 0,002 | **1** |
+
+Le classement suit exactement la dernière colonne, et ce n'est pas un hasard. **La
+pluviométrie ne prend qu'une seule valeur par pays dans la source** : c'est un identifiant
+de région exprimé en millimètres, pas une mesure d'apport d'eau. Aucun modèle ne peut en
+tirer une relation agronomique, puisque la donnée ne montre jamais la pluie varier à
+contexte égal.
+
+Le modèle s'en sert pourtant : permuter cette colonne déplace les prédictions de
+**0,92 t/ha** en moyenne. Mais l'erreur ne bouge pas — l'ajustement ne vaut pas mieux qu'un
+ajustement au hasard sur un pays jamais vu. Avec σ = 0,002, le −0,003 est indistinguable de
+zéro : la variable est **neutre**, pas nuisible.
+
+Trois contrôles le confirment :
+
+| Contrôle | Résultat |
 |---|---|
-| Culture (`Item`) | **0,709** |
-| Pesticides | 0,121 |
-| Température | 0,033 |
-| Année | 0,008 |
-| Pluviométrie | −0,004 |
+| **Ablation** — réentraîner sans la pluviométrie | test R² 0,627 → 0,635 · CV groupé 0,595 → 0,567 · neutre |
+| **Desserrer le modèle** — 255 feuilles, L2 = 0,01 | test R² 0,627 → **0,552** · pluviométrie à −0,022 |
+| **Contraindre les interactions** — `interaction_cst` | test R² 0,627 → **0,313** |
 
-La culture domine tout le reste. La pluviométrie ne contribue **rien** sur un pays inconnu
-— elle ne varie pas à l'intérieur d'un pays, et sert au filtre de domaine de validité
-plutôt qu'à la prédiction elle-même.
+Les deux derniers méritent d'être soulignés : donner **plus** de capacité au modèle
+**aggrave** le problème, la capacité supplémentaire servant à mémoriser plus finement la
+correspondance pluviométrie → pays. Les hyperparamètres serrés retenus par la recherche ne
+sont pas une limite subie, ce sont la réponse correcte au protocole groupé par pays.
 
 ### Limites connues
 
@@ -294,7 +329,10 @@ plutôt qu'à la prédiction elle-même.
 ├─ models/
 │  ├─ model_B.joblib         # le modèle servi (versionné)
 │  └─ domaine_validite.json  # bornes climatiques par culture
-├─ notebooks/               # EDA, fusion, modélisation, MLflow
+├─ notebooks/
+│  ├─ df.csv                # dataset consolidé — la source de vérité (versionné)
+│  ├─ EDA *.ipynb           # exploration et fusion des trois sources
+│  └─ ML CYPD.ipynb         # benchmark, optimisation, MLflow, volet économique
 ├─ tests/                   # 26 tests
 ├─ .streamlit/config.toml   # thème, aux couleurs du logo
 ├─ Dockerfile               # image de l'API, multi-étage
@@ -314,12 +352,6 @@ divergence ne se manifeste que par des prédictions fausses en production.
 - [x] Étape 3 — API FastAPI et conteneurisation
 - [x] Étape 4 — Interface Streamlit
 - [x] Étape 5 — Tests et build automatisés
-- [ ] Rapport métier (`.pdf`)
-- [ ] Captures MLflow annotées
-- [ ] Support de soutenance
-- [ ] *(hors périmètre)* Déploiement continu vers un registre et un hébergeur
-
-Le détail vit dans [`brief/plan.md`](brief/plan.md).
 
 <p align="right">(<a href="#readme-top">retour en haut</a>)</p>
 
@@ -335,14 +367,46 @@ intégration de données multi-sources ».
 
 ## Sources et remerciements
 
-* **Agriculture Crop Yield** — rendements historiques par culture et par région
-* **Crop Yield Prediction Dataset** — pluviométrie, température, usage de pesticides
-* **FAO / Land Use** — surfaces agricoles, utilisée pour ramener les pesticides en kg/ha
+### Les jeux de données
+
+Le **dataset consolidé** issu de l'Étape 1 est versionné : [`notebooks/df.csv`](notebooks/df.csv),
+1,3 Mo, 14 371 lignes, 109 pays, 10 cultures, 1990-2013. C'est la source de vérité des
+étapes suivantes, et elle suffit à rejouer l'entraînement.
+
+Les **trois sources brutes**, elles, ne le sont pas — 117 Mo, dont un fichier de 90 Mo à
+lui seul. Elles ne servent qu'à rejouer la fusion de l'Étape 1, et ne sont **pas
+nécessaires** pour lancer l'application ni pour réentraîner le modèle.
+
+Fournies avec l'énoncé de la mission, à replacer selon cette arborescence :
+
+```
+data/
+├─ Agriculture Crop Yield/
+│  └─ crop_yield.csv                     # rendements par culture et par région
+├─ Crop Yield Prediction Dataset/
+│  ├─ pesticides.csv                     # usage de pesticides, en tonnes
+│  ├─ rainfall.csv                       # pluviométrie annuelle
+│  ├─ temp.csv                           # température moyenne
+│  └─ yield.csv, yield_df.csv            # rendements FAO
+└─ LandUse/
+   └─ Inputs_LandUse_E_All_Data*.csv     # FAO — surfaces agricoles
+```
+
+La troisième source sert à ramener les pesticides d'un volume national en tonnes à une
+**intensité en kg/ha**, seule forme comparable d'un pays à l'autre.
+
+### Remerciements
+
 * [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — structure de ce document
+* [FAOSTAT](https://www.fao.org/faostat/) — données de surfaces agricoles
 
 <p align="right">(<a href="#readme-top">retour en haut</a>)</p>
 
-[ci-shield]: https://img.shields.io/github/actions/workflow/status/KL38/OC_P12/ci.yml?branch=main&style=for-the-badge&label=CI
+[//]: # (Badge natif de GitHub et non shields.io : le dépôt est privé, et shields.io)
+[//]: # (interroge l'API publique — il répondrait « repo or workflow not found ». GitHub,)
+[//]: # (lui, sert le badge avec la session du lecteur, donc il s'affiche pour qui a accès.)
+[//]: # (À rebasculer sur shields.io si le dépôt passe public, pour un style homogène.)
+[ci-shield]: https://github.com/KL38/OC_P12/actions/workflows/ci.yml/badge.svg?branch=main
 [ci-url]: https://github.com/KL38/OC_P12/actions/workflows/ci.yml
 [python-shield]: https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white
 [python-url]: https://www.python.org/

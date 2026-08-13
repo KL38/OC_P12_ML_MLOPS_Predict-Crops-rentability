@@ -1,8 +1,12 @@
 # Données sources (~110 Mo) — provenance documentée dans le README
 data/
 
-# Données dérivées, régénérables par les notebooks
-notebooks/df.csv
+# Données dérivées, régénérables par les notebooks.
+#
+# `notebooks/df.csv` fait exception et EST versionné (1,3 Mo) : c'est le dataset consolidé
+# que l'Étape 1 du brief demande de livrer — « ce fichier unique sera la source de vérité
+# pour les étapes suivantes ». Sa présence fait aussi tourner en CI le test qui aligne les
+# dix libellés de culture sur le jeu d'entraînement, jusqu'ici désactivé faute de fichier.
 *.parquet
 
 # MLflow — magasin de suivi et artefacts des runs, régénérés par le notebook.
@@ -16,6 +20,13 @@ mlflow.db
 
 # Logs d'entraînement CatBoost
 catboost_info/
+
+# Documents de travail et sorties intermédiaires : ils appartiennent au dossier de rendu
+# OpenClassrooms, pas au dépôt de code. Le README porte à lui seul ce qu'un lecteur du
+# dépôt doit savoir.
+brief/
+figures/
+livrables/
 
 # models/model_B.joblib est VOLONTAIREMENT versionné (217 Ko) : c'est ce que le Dockerfile
 # copie dans l'image. Sans lui dans le dépôt, un `docker build` sur un runner GitHub n'a

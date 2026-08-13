@@ -38,8 +38,23 @@ RESERVE = (
 )
 
 PORTEE = (
-    "Profil agroclimatique régional de référence. Les estimations valent pour ce profil, "
-    "pas pour une parcelle isolée."
+    "Profil agroclimatique régional de référence. Ces valeurs **situent votre région parmi "
+    "les pays observés** — elles ne simulent pas l'effet d'une irrigation ou d'un changement "
+    "de pratique sur une parcelle donnée."
+)
+
+# Réserve spécifique à la pluviométrie, placée en infobulle du curseur plutôt qu'à l'écran :
+# elle ne concerne qu'une variable sur trois et alourdirait la page.
+#
+# Le fait mesuré derrière : dans la source, la pluviométrie ne prend qu'UNE valeur par pays
+# (température et pesticides en prennent 21 et 23). C'est donc un identifiant de région, et
+# l'importance par permutation le confirme — nulle sur des pays jamais vus, là où les deux
+# autres variables gardent un apport réel.
+RESERVE_PLUIE = (
+    "Dans les données sources, la pluviométrie ne prend qu'**une seule valeur par pays** : "
+    "elle identifie la région plutôt qu'elle ne mesure un apport d'eau. Déplacer ce curseur "
+    "change donc le groupe de pays auquel votre région est comparée — ce n'est **pas** une "
+    "simulation d'irrigation."
 )
 
 VERT = "#33673A"
@@ -191,6 +206,7 @@ with st.container(border=True):
         value=1030,
         step=10,
         key="pluie",
+        help=RESERVE_PLUIE,
     )
     colonne_temp.slider(
         "Température moyenne annuelle (°C)",
