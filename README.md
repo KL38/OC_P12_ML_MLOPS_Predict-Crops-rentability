@@ -233,14 +233,12 @@ d'« optionnel mais fortement recommandé », mais la démonstration repose sur
 **HistGradientBoosting** entraîné sur `log(rendement)`, sélectionné parmi cinq familles de
 modèles au terme de 14 expérimentations suivies dans MLflow.
 
-### La validation groupée par pays — le choix qui décide de tout
+### La validation groupée par pays plutôt que aléatoire
 
 Toute la modélisation repose sur une décision prise avant le premier entraînement :
-**aucun pays du jeu de test n'apparaît dans le jeu d'entraînement**. `GroupKFold` en
-validation croisée, `GroupShuffleSplit` pour le passage final sur le test.
+**Le modele ne doit pas apprendre les pays par coeur**. C'est pourquoi `GroupShuffleSplit` sur les pays a été utilisé pour train-test separation, `GroupKFold` en validation croisée.
 
-Ce n'est pas un détail de protocole. Même modèle, mêmes hyperparamètres, mêmes données —
-seul le découpage change :
+En effet, avec le même modèle, mêmes hyperparamètres, mêmes données :
 
 | Découpage | R² du modèle | R² d'un `DummyRegressor` |
 |---|---|---|
@@ -254,7 +252,7 @@ modèle reconnaît des pays qu'il a déjà vus.
 
 Annoncer 0,760 aurait été plus flatteur et sans valeur : en production, l'utilisateur décrit
 une région que le modèle n'a jamais rencontrée. Tous les chiffres ci-dessous sont donc les
-chiffres groupés — les plus bas, et les seuls honnêtes.
+chiffres groupés, les plus bas, et les seuls honnêtes.
 
 | | Valeur |
 |---|---|
