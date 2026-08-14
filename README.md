@@ -298,26 +298,21 @@ Importance par permutation sur les 22 pays de test, en points de RMSLE perdus qu
 colonne est remplacée par du bruit. Elle mesure si le modèle a **raison** de se servir
 d'une variable — pas s'il s'en sert.
 
-| Variable | Importance | σ (20 répétitions) | Valeurs distinctes par pays |
-|---|---|---|---|
-| Culture (`Item`) | **+0,709** | 0,010 | — |
-| Pesticides | +0,120 | 0,006 | 23 |
-| Température | +0,033 | 0,002 | 21 |
-| Année | +0,008 | 0,001 | 23 |
-| Pluviométrie | −0,003 | 0,002 | **1** |
+| Variable | Importance | σ (20 répétitions) | 
+|---|---|---|
+| Culture (`Item`) | **+0,709** | 0,010 |
+| Pesticides | +0,120 | 0,006 | 
+| Température | +0,033 | 0,002 | 
+| Année | +0,008 | 0,008 | 
+| Pluviométrie | −0,004 | 0,002 |
 
-Le classement suit exactement la dernière colonne, et ce n'est pas un hasard. **La
-pluviométrie ne prend qu'une seule valeur par pays dans la source** : c'est un identifiant
-de région exprimé en millimètres, pas une mesure d'apport d'eau. Aucun modèle ne peut en
-tirer une relation agronomique, puisque la donnée ne montre jamais la pluie varier à
-contexte égal.
+- **La culture (`Item`) domine tout** : 0,71 point de RMSLE perdu, contre 0,12 pour les pesticides et 0,03 pour la température. C'est le η² = 53 % de l'EDA, retrouvé côté modèle.
+- **La pluviométrie n'apporte aucune précision sur un pays inconnu** : −0,004, c'est-à-dire zéro (le léger négatif est du bruit d'échantillonnage). Cohérent avec l'EDA : une seule valeur par pays, jamais de variation interne — le modèle l'a apprise comme **signature du pays**, pas comme variable agronomique, et une signature ne généralise pas. C'est la justification a posteriori du protocole groupé.
+- **Sensibilité n'est pas utilité — le faux paradoxe de l'app** : dans Streamlit, bouger le curseur pluviométrie déplace la prédiction. Normal : changer la pluie fait ressembler la saisie à un autre pays de l'entraînement, et le modèle applique le niveau de rendement mémorisé de ce « pays »-là. La sortie **bouge**, mais ces déplacements n'apportent aucune précision mesurable sur un pays jamais vu — c'est une limite assumée du modèle, pas un signal agronomique validé.
+- La pluviométrie reste pourtant dans le modèle servi : c'est une saisie utilisateur de `/recommend`, et son rôle **validé** est ailleurs — le filtre de domaine de validité s'appuie dessus pour bloquer les recommandations incohérentes, pas pour ajuster le chiffre prédit.
+- `Year` ne pèse presque rien (0,008) : cohérent avec la décision de transmettre l'année réelle sans correction — l'arbre sature sur son dernier seuil appris.
 
-Le modèle s'en sert pourtant : permuter cette colonne déplace les prédictions de
-**0,92 t/ha** en moyenne. Mais l'erreur ne bouge pas — l'ajustement ne vaut pas mieux qu'un
-ajustement au hasard sur un pays jamais vu. Avec σ = 0,002, le −0,003 est indistinguable de
-zéro : la variable est **neutre**, pas nuisible.
-
-Trois contrôles le confirment :
+Trois contrôles confirment la neutralité de la variable pluie :
 
 | Contrôle | Résultat |
 |---|---|
@@ -329,6 +324,39 @@ Les deux derniers méritent d'être soulignés : donner **plus** de capacité au
 **aggrave** le problème, la capacité supplémentaire servant à mémoriser plus finement la
 correspondance pluviométrie → pays. Les hyperparamètres serrés retenus par la recherche ne
 sont pas une limite subie, ce sont la réponse correcte au protocole groupé par pays.
+
+### Ce que le modèle rapporte
+
+Un moteur de recommandation ne vaut que s'il bat un **conseil unique** — « semer partout la
+culture la plus rentable en général », qui ne demande aucun modèle. Les deux conseillers
+sont comparés sur les **488 situations** (pays, année) du jeu de test où plusieurs cultures
+ont réellement été observées, puis payés avec le profit **effectivement constaté** sur
+place. Le modèle n'est donc jamais jugé sur ses propres prédictions.
+
+| Conseil suivi | Profit réel moyen | Médiane |
+|---|---|---|
+| Conseil unique — la même culture partout | 2 263 \$/ha | 1 756 \$/ha |
+| **Modèle** — la culture au meilleur profit prédit localement | **2 344 \$/ha** | **1 910 \$/ha** |
+| Meilleur choix possible — repère théorique | 2 629 \$/ha | 2 029 \$/ha |
+
+> **Suivre le modèle rapporte +81 \$/ha, soit +3,6 %.** C'est le gain anticipé de
+> `/recommend`.
+
+- Le modèle désigne la meilleure culture dans **57 %** des situations, le conseil unique
+  dans 52 %.
+- Dans **9 situations sur 10 les deux conseils coïncident** : tout se joue sur les **54
+  désaccords**, où le modèle fait mieux **42 fois**. Le gain paraît modeste en relatif
+  parce qu'il ne se matérialise que sur 11 % des cas — mais il ne coûte rien à
+  l'agriculteur : c'est le même semis, décidé autrement.
+- **Inde 2007** — le conseil unique désigne Potatoes, qui rapporte 1 298 \$/ha sur place.
+  Le modèle, voyant que le climat local défavorise la pomme de terre, désigne Cassava :
+  **3 933 \$/ha réels**, le meilleur choix possible cette année-là.
+- Le modèle reste ~285 \$/ha sous l'optimum théorique — l'atteindre supposerait de
+  connaître les rendements à l'avance.
+
+Le classement est filtré **avant** d'être trié : une culture hors de son domaine observé
+est écartée, jamais silencieusement reléguée. Sans ce filtre, l'igname arriverait en tête
+de 77 % des situations alors qu'elle ne pousse que dans 57 % d'entre elles.
 
 ### Limites connues
 
