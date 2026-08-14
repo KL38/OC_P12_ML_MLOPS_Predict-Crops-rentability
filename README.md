@@ -236,33 +236,61 @@ modèles au terme de 14 expérimentations suivies dans MLflow.
 ### La validation groupée par pays plutôt que aléatoire
 
 Toute la modélisation repose sur une décision prise avant le premier entraînement :
-**Le modele ne doit pas apprendre les pays par coeur**. C'est pourquoi `GroupShuffleSplit` sur les pays a été utilisé pour train-test separation, `GroupKFold` en validation croisée.
+**le modèle ne doit pas apprendre les pays par cœur**. La pluviométrie est constante par
+pays sur 1990-2013 (η² = 100 %) et la température quasi (99,6 %) : le couple
+(pluie, température) **reconstitue le pays exactement**. Un même pays des deux côtés d'un
+découpage transforme l'évaluation en consultation de table.
 
-En effet, avec le même modèle, mêmes hyperparamètres, mêmes données :
+Deux outils, une seule raison : `GroupShuffleSplit` met 22 pays de test de côté en amont,
+`GroupKFold` garantit qu'aucun pays n'est à cheval sur deux plis pendant la validation
+croisée.
 
-| Découpage | R² du modèle | R² d'un `DummyRegressor` |
-|---|---|---|
-| **Groupé par pays** — 22 pays jamais vus | **0,595** | −0,150 |
-| Aléatoire — les mêmes pays des deux côtés | 0,760 | −0,148 |
+**Le tableau ci-dessous ne compare que des scores de validation croisée**, tous mesurés sur
+les mêmes 87 pays d'entraînement, avec les mêmes hyperparamètres : seul le découpage des
+plis change.
+
+| Modèle | R² sous `GroupKFold` | R² sous `KFold` aléatoire | Écart |
+|---|---|---|---|
+| `DummyRegressor` — *témoin* | −0,164 | −0,160 | **+0,004** |
+| Ridge | 0,415 | 0,594 | +0,179 |
+| Lasso | 0,412 | 0,563 | +0,151 |
+| RandomForest | 0,480 | **0,932** | +0,452 |
+| CatBoost | 0,533 | 0,918 | +0,385 |
+| **HistGradientBoosting** | **0,566** | 0,889 | +0,323 |
 
 Le témoin rend la lecture indiscutable : un modèle qui n'apprend rien obtient le **même**
-score sur les deux découpages (−0,150 contre −0,148). Les deux jeux de test sont donc
-d'égale difficulté, et la totalité de l'écart 0,595 → 0,760 est de la **mémorisation** — le
-modèle reconnaît des pays qu'il a déjà vus.
+score sous les deux protocoles (−0,164 contre −0,160). Les deux découpages sont donc d'égale
+difficulté, et tout l'écart des autres lignes est de la **mémorisation** — le modèle
+reconnaît des pays qu'il a déjà vus.
 
-Annoncer 0,760 aurait été plus flatteur et sans valeur : en production, l'utilisateur décrit
-une région que le modèle n'a jamais rencontrée. Tous les chiffres ci-dessous sont donc les
-chiffres groupés, les plus bas, et les seuls honnêtes.
+Deux lectures s'imposent :
+
+- **Le classement s'inverse.** RandomForest est premier en aléatoire (0,932) et seulement
+  **troisième** en groupé (0,480) : une sélection en CV aléatoire aurait retenu le modèle
+  qui généralise le plus mal aux pays inconnus. HistGradientBoosting fait le trajet inverse.
+- **Plus un modèle est aléatoire, plus il mémorise.** +0,15 à +0,18 pour les linéaires,
+  +0,32 à +0,45 pour les arbres, +0,004 pour le témoin qui ne peut rien mémoriser.
+
+Annoncer un chiffre aléatoire aurait été plus flatteur et sans valeur : en production,
+l'utilisateur décrit une région que le modèle n'a jamais rencontrée. Tous les chiffres
+ci-dessous sont donc les chiffres groupés, les plus bas, et les seuls honnêtes.
 
 | | Valeur |
 |---|---|
 | Protocole de validation croisée | `GroupKFold(5)` **par pays** |
-| R² validation croisée | 0,595 |
-| R² test | **0,627** |
+| R² validation croisée — avant optimisation | 0,566 |
+| R² validation croisée — **après optimisation** | **0,595** |
+| R² test — 22 pays jamais vus | **0,627** |
 | RMSE test | **4,94 t/ha** |
 | MAE test | 2,85 t/ha |
 | Entraînement | 11 550 lignes, 87 pays, 1990-2013, 10 cultures |
 | Test | 2 821 lignes, 22 pays **jamais vus** |
+
+Les deux premières lignes sont des moyennes sur 5 plis de pays d'entraînement ; la
+troisième est un passage unique sur des pays mis de côté avant tout entraînement. Que le
+test (0,627) dépasse la validation croisée (0,595) tient à la variance d'échantillonnage :
+les 22 pays tirés sont un peu plus faciles que la moyenne des plis (±0,078 d'un pli à
+l'autre).
 
 ### Ce qui pèse dans la prédiction
 

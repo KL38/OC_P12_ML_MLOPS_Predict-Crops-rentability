@@ -1,10 +1,11 @@
 name: CI
 
-# Ce que la CI protège réellement : le contrat partagé entre le notebook et l'API. Le jeu
-# de données et le modèle entraîné ne sont pas versionnés (voir .gitignore), donc les tests
-# qui en dépendent se désactivent d'eux-mêmes — mais la portabilité de l'artefact, elle,
-# est vérifiée dans un interpréteur neuf. C'est la seule panne du projet qui passait tous
-# les contrôles locaux et n'aurait éclaté qu'au déploiement.
+# Ce que la CI protège réellement : le contrat partagé entre le notebook et l'API. Le
+# dataset consolidé et le modèle entraîné sont VERSIONNÉS par exception (voir .gitignore),
+# précisément pour que les 26 tests s'exécutent tous ici — aucun ne se désactive, un test
+# qui passe en silence ne prouve rien. La portabilité de l'artefact est vérifiée dans un
+# interpréteur neuf : c'est la seule panne du projet qui passait tous les contrôles locaux
+# et n'aurait éclaté qu'au déploiement.
 #
 # Deux jobs volontairement PARALLÈLES et non enchaînés : un échec de lint et un échec de
 # test sont deux informations distinctes, et on veut les deux au même run. Les enchaîner

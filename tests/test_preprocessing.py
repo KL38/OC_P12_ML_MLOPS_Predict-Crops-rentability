@@ -88,9 +88,13 @@ def test_culture_inconnue_rejetee():
 
 
 def test_libelles_alignes_sur_le_jeu_dentrainement():
-    donnees = Path(__file__).resolve().parents[1] / "notebooks" / "df.csv"
-    if not donnees.exists():
-        pytest.skip("df.csv absent (données non versionnées)")
+    """`notebooks/df.csv` est versionné : son absence est un échec, jamais un skip.
+
+    Même règle que pour l'artefact — le dataset consolidé est la source de vérité de
+    l'entraînement, et un test qui s'auto-désactive passerait en silence là où c'est
+    justement la disparition du fichier qu'il faudrait voir.
+    """
+    donnees = RACINE / "notebooks" / "df.csv"
     assert sorted(pd.read_csv(donnees)["Item"].unique()) == CULTURES
 
 
