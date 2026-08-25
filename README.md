@@ -1,153 +1,307 @@
 <a id="readme-top"></a>
 
-[![CI][ci-shield]][ci-url]
-[![Python][python-shield]][python-url]
-[![FastAPI][fastapi-shield]][fastapi-url]
-[![Streamlit][streamlit-shield]][streamlit-url]
-[![Docker][docker-shield]][docker-url]
-[![MLflow][mlflow-shield]][mlflow-url]
-
-<br />
 <div align="center">
-  <a href="https://github.com/KL38/OC_P12">
-    <img src="app/logo.png" alt="Agritech Answers" width="320">
-  </a>
 
-  <h3 align="center">Prédiction de rendements & moteur de recommandation de culture</h3>
+<img src="app/logo.png" alt="Agritech Answers" width="300">
 
-  <p align="center">
-    Un modèle unique, servi par une API, interrogé par une interface — pour aider un
-    agriculteur à choisir quoi semer.
-    <br />
-    <a href="#à-propos-du-projet"><strong>Découvrir le projet »</strong></a>
-    <br />
-    <br />
-    <a href="#démarrage">Démarrage</a>
-    &middot;
-    <a href="#pipeline-cicd">Pipeline CI/CD</a>
-    &middot;
-    <a href="#le-modèle">Le modèle</a>
-  </p>
+# Crop Predict — Yield Prediction & Crop Recommendation
+
+**One model, served by an API, queried by an interface — to help a farmer decide what to sow.**
+
+*OpenClassrooms project P12 — "Design a recommender system with multi-source data integration"*
+
+[![CI](https://img.shields.io/github/actions/workflow/status/KL38/OC_P12_ML_MLOPS_Predict-Crops-rentability/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/KL38/OC_P12_ML_MLOPS_Predict-Crops-rentability/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![MLflow](https://img.shields.io/badge/MLflow-0194E2?logo=mlflow&logoColor=white)](https://mlflow.org/)
+
 </div>
 
+The application does two things through a single interface. **Predict** — the user picks a crop,
+describes their region, and gets an expected yield. **Recommend** — the user describes only their
+conditions, and the ten crops come back ranked by estimated profit.
+
+It is **one model called two different ways**: `/recommend` is `/predict` run over the ten crops of
+the same context, plus a business layer. No second model, no second training run.
+
+---
+
+## 📊 Results
+
+### What following the model earns
+
+A recommender is only worth something if it beats a **single blanket rule** — "always sow whatever
+is most profitable in general" — which needs no model at all. Both advisers are compared over the
+**488 situations** (country, year) in the test set where several crops were actually grown, then
+paid out at the profit **actually observed** on the ground. The model is never judged on its own
+predictions.
+
+| Advice followed | Mean real profit | Median |
+|---|---:|---:|
+| Single blanket rule — the same crop everywhere | 2 263 \$/ha | 1 756 \$/ha |
+| **Model** — the crop with the best locally predicted profit | **2 344 \$/ha** | **1 910 \$/ha** |
+| Best possible choice — theoretical ceiling | 2 629 \$/ha | 2 029 \$/ha |
+
+> **Following the model earns +81 \$/ha, or +3.6 %** — at no cost to the farmer. It is the same
+> sowing, decided differently.
+
+### How good the model is
+
+**HistGradientBoosting** trained on `log(yield)`, picked from five model families across 14
+experiments tracked in MLflow.
+
+| | Value |
+|---|---|
+| Cross-validation protocol | `GroupKFold(5)` **by country** |
+| CV R² — before tuning | 0.566 |
+| CV R² — **after tuning** | **0.595** |
+| **Test R² — 22 countries never seen** | **0.627** |
+| Test RMSE | **4.94 t/ha** |
+| Test MAE | 2.85 t/ha |
+| Training | 11 550 rows, 87 countries, 1990-2013, 10 crops |
+| Test | 2 821 rows, 22 countries **never seen** |
+
+### Why those numbers are the honest ones
+
+<div align="center">
+  <img src="docs/benchmark-grouped-vs-random.png" width="900"
+       alt="Left: R2 by protocol, grouped versus random split, showing the model ranking invert. Right: ratio of grouped RMSE to random RMSE, with the Dummy control at exactly 1.00x" />
+  <br />
+  <em><b>Left:</b> the ranking inverts between the two protocols. <b>Right:</b> what an unseen
+  country costs each model — the <code>Dummy</code> control sits at exactly 1.00×, because a model
+  that learns nothing has nothing to memorise.</em>
+</div>
+
+Rainfall is constant per country over 1990-2013 (η² = 100 %) and temperature nearly so (99.6 %):
+the (rainfall, temperature) pair **reconstructs the country exactly**. Put the same country on both
+sides of a split and the evaluation becomes a table lookup. Every figure above is therefore measured
+with countries held out — the lowest numbers available, and the only meaningful ones.
+
+[**→ The full argument, with the control that makes it airtight**](#-country-grouped-validation)
+
+---
+
 <details>
-  <summary>Sommaire</summary>
-  <ol>
-    <li>
-      <a href="#à-propos-du-projet">À propos du projet</a>
-      <ul>
-        <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#construit-avec">Construit avec</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#démarrage">Démarrage</a>
-      <ul>
-        <li><a href="#prérequis">Prérequis</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#utilisation">Utilisation</a></li>
-    <li><a href="#pipeline-cicd">Pipeline CI/CD</a></li>
-    <li><a href="#le-modèle">Le modèle</a></li>
-    <li><a href="#structure-du-dépôt">Structure du dépôt</a></li>
-    <li><a href="#feuille-de-route">Feuille de route</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#sources-et-remerciements">Sources et remerciements</a></li>
-  </ol>
+<summary>📑 Table of contents</summary>
+
+- [Results](#-results)
+- [The application](#-the-application)
+- [Architecture](#-architecture)
+- [The model](#-the-model)
+  - [Country-grouped validation](#-country-grouped-validation)
+  - [What drives the prediction](#-what-drives-the-prediction)
+  - [Where the profit comes from](#-where-the-profit-comes-from)
+  - [Experiment tracking](#-experiment-tracking)
+  - [Known limitations](#-known-limitations)
+- [Getting started](#-getting-started)
+- [CI pipeline](#-ci-pipeline)
+- [Repository layout](#-repository-layout)
+- [Data sources](#-data-sources)
+
 </details>
 
-## À propos du projet
+## 🖥️ The application
 
-L'application remplit deux fonctions complémentaires, au sein d'une même interface :
+Two tabs over one model, plus a price table the farmer owns.
 
-- **Prédiction** — l'utilisateur choisit une culture, décrit les conditions de sa région,
-  et obtient une estimation chiffrée du rendement attendu.
-- **Recommandation** — l'utilisateur ne décrit que ses conditions, et l'application classe
-  les dix cultures par rentabilité estimée.
+<div align="center">
+  <img src="docs/app-prediction.png" width="820"
+       alt="Prediction tab: three sliders for rainfall, temperature and pesticide intensity, a crop selector, and an estimated yield of 8.94 t/ha for cassava" />
+  <br />
+  <em><b>Predict.</b> Three sliders describe the region, one crop is picked, one yield comes back.
+  The permanent notice above them states what the sliders do and do not mean.</em>
+</div>
 
-C'est **un seul modèle appelé deux fois différemment** : `/recommend` n'est rien d'autre
-que `/predict` exécuté sur les dix cultures d'un même contexte, suivi d'une couche métier.
-Aucun second modèle, aucun second entraînement.
+<div align="center">
+  <img src="docs/app-recommendation.png" width="820"
+       alt="Recommendation tab: the ten crops ranked by estimated margin, with a bar chart and a table where two crops are flagged out-of-domain in red with the reason" />
+  <br />
+  <em><b>Recommend.</b> The same context, all ten crops ranked. Note the rows in red: plantain and
+  yam are <b>filtered out before ranking</b>, with the reason spelled out — not silently demoted.
+  Without that filter, yam would top 77 % of situations while only growing in 57 % of them.</em>
+</div>
 
-Les prix ne transitent jamais par l'API. Elle rend des **rendements** ; la marge se calcule
-dans l'interface, à partir d'un tableau que l'agriculteur ajuste à son exploitation.
-Modifier un prix reclasse l'affichage sans relancer la moindre requête.
+<div align="center">
+  <img src="docs/app-price-table.png" width="820"
+       alt="Price and cost table, editable in place, listing selling price per tonne and cost per hectare for each of the ten crops" />
+  <br />
+  <em><b>Adjust.</b> Prices never travel through the API — it returns <b>yields</b>. Margins are
+  computed in the interface from a table the farmer edits to match their own operation. Changing a
+  price re-ranks the display without a single new request.</em>
+</div>
 
-### Architecture
+## 🧩 Architecture
 
 ```mermaid
 flowchart LR
-    U(["Agriculteur"]) -->|navigateur| S["Streamlit · app/app.py"]
+    U(["Farmer"]) -->|browser| S["Streamlit · app/app.py"]
     S -->|POST /predict| A["FastAPI · src/api.py"]
     S -->|POST /recommend| A
     A --> M[("model_B.joblib")]
     A --> D[("domaine_validite.json")]
-    S -.->|table éditable à l'écran| P[("prix_couts.csv")]
+    S -.->|table edited on screen| P[("prix_couts.csv")]
 ```
 
-Deux garde-fous distincts, et la distinction est volontaire :
+Two distinct guardrails, and the distinction is deliberate:
 
-| Mécanisme | Ce qu'il traite | Réponse |
+| Mechanism | What it catches | Response |
 |---|---|---|
-| **Pydantic** | l'impossible physiquement — pluie négative, −300 °C, culture inconnue | `422`, champ fautif nommé, rien n'est prédit |
-| **Domaine de validité** | l'invraisemblable agronomiquement — du manioc à 5 °C | `200` avec `cultivable: false` et le motif |
+| **Pydantic** | the physically impossible — negative rainfall, −300 °C, unknown crop | `422`, offending field named, nothing is predicted |
+| **Validity domain** | the agronomically implausible — cassava at 5 °C | `200` with `cultivable: false` and the reason |
 
-### Construit avec
+`src/preprocessing.py` is **shared** between the training notebook and the API: what builds the
+model must be exactly what serves it, or the two drift apart — and the drift only ever shows up as
+wrong predictions in production.
 
-* [![Python][python-shield]][python-url]
-* [![FastAPI][fastapi-shield]][fastapi-url]
-* [![Streamlit][streamlit-shield]][streamlit-url]
-* [![scikit-learn][sklearn-shield]][sklearn-url]
-* [![MLflow][mlflow-shield]][mlflow-url]
-* [![Docker][docker-shield]][docker-url]
-* [![uv][uv-shield]][uv-url]
+## 🧠 The model
 
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+### 🔍 Country-grouped validation
 
-## Démarrage
+Everything rests on a decision taken before the first training run: **the model must not learn
+countries by heart**.
 
-### Prérequis
+Two tools, one reason: `GroupShuffleSplit` sets 22 test countries aside up front, `GroupKFold`
+guarantees no country straddles two folds during cross-validation.
 
-Au choix, selon la façon de lancer :
+**The table below compares cross-validation scores only** — same 87 training countries, same
+hyperparameters. Only the fold split changes.
 
-* **Docker** — c'est tout. [Docker Desktop](https://docs.docker.com/get-started/get-docker/)
-* **ou** Python 3.12 et [uv](https://docs.astral.sh/uv/getting-started/installation/)
+| Model | R² under `GroupKFold` | R² under random `KFold` | Gap |
+|---|---:|---:|---:|
+| `DummyRegressor` — *control* | −0.164 | −0.160 | **+0.004** |
+| Ridge | 0.415 | 0.594 | +0.179 |
+| Lasso | 0.412 | 0.563 | +0.151 |
+| RandomForest | 0.480 | **0.932** | +0.452 |
+| CatBoost | 0.533 | 0.918 | +0.385 |
+| **HistGradientBoosting** | **0.566** | 0.889 | +0.323 |
 
-### Installation
+The control settles it: a model that learns nothing scores the **same** under both protocols
+(−0.164 against −0.160). The two splits are therefore equally hard, and every gap on the other rows
+is **memorisation** — the model recognising countries it has already seen.
 
-```sh
-git clone git@github.com:KL38/OC_P12.git
-cd OC_P12
-```
+- **The ranking inverts.** RandomForest is first under random splitting (0.932) and only **third**
+  under grouping (0.480): selecting on random CV would have picked the model that generalises worst
+  to unknown countries. HistGradientBoosting makes the opposite journey.
+- **The more a model can memorise, the more it does.** +0.15 to +0.18 for the linear models,
+  +0.32 to +0.45 for the tree ensembles, +0.004 for the control that cannot memorise anything.
 
-Le modèle entraîné (`models/model_B.joblib`, 217 Ko) est versionné : rien à télécharger,
-rien à réentraîner pour lancer l'application.
+Quoting a random-split number would have been more flattering and worthless: in production the user
+describes a region the model has never met.
 
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+> Test R² (0.627) exceeding cross-validation R² (0.595) is sampling variance — the 22 drawn
+> countries are slightly easier than the average fold (±0.078 from one fold to the next).
 
-## Utilisation
+### ⚖️ What drives the prediction
 
-### Avec Docker — recommandé
+Permutation importance over the 22 test countries, in RMSLE points lost when a column is replaced
+by noise. It measures whether the model is **right** to use a variable — not whether it uses it.
 
-Une commande, les deux services :
+| Variable | Importance | σ (20 repeats) |
+|---|---:|---:|
+| Crop (`Item`) | **+0.709** | 0.010 |
+| Pesticides | +0.120 | 0.006 |
+| Temperature | +0.033 | 0.002 |
+| Year | +0.008 | 0.008 |
+| Rainfall | −0.004 | 0.002 |
+
+- **Crop dominates everything**: 0.71 RMSLE points against 0.12 for pesticides and 0.03 for
+  temperature. That is the η² = 53 % from the EDA, showing up again on the model side.
+- **Rainfall adds no accuracy on an unknown country**: −0.004, which is zero (the slight negative is
+  sampling noise). Consistent with the EDA — one value per country, never any internal variation, so
+  the model learned it as a **country signature**, not as an agronomic variable. And a signature does
+  not generalise. This is the after-the-fact justification of the grouped protocol.
+- **Sensitivity is not usefulness — the app's false paradox.** Moving the rainfall slider does shift
+  the prediction. That is expected: changing rainfall makes the input resemble a different training
+  country, and the model applies that "country's" memorised yield level. The output **moves**, but
+  those moves buy no measurable accuracy on a country never seen. It is an acknowledged limit of the
+  model, not a validated agronomic signal.
+- Rainfall stays in the served model anyway: it is a user input of `/recommend`, and its **validated**
+  role is elsewhere — the validity-domain filter leans on it to block incoherent recommendations,
+  not to adjust the predicted figure.
+- `Year` weighs almost nothing (0.008), consistent with passing the real year through untouched — the
+  tree saturates at its last learned split.
+
+Three controls confirm the rainfall variable is neutral:
+
+| Control | Result |
+|---|---|
+| **Ablation** — retrain without rainfall | test R² 0.627 → 0.635 · grouped CV 0.595 → 0.567 · neutral |
+| **Loosen the model** — 255 leaves, L2 = 0.01 | test R² 0.627 → **0.552** · rainfall down to −0.022 |
+| **Constrain interactions** — `interaction_cst` | test R² 0.627 → **0.313** |
+
+The last two deserve emphasis: giving the model **more** capacity makes the problem **worse**, the
+extra capacity going into memorising the rainfall → country mapping more finely. The tight
+hyperparameters the search settled on are not a limitation suffered — they are the correct answer to
+a country-grouped protocol.
+
+### 💰 Where the profit comes from
+
+- The model picks the best crop in **57 %** of situations, the blanket rule in 52 %.
+- In **9 situations out of 10 the two advisers agree**: everything is decided on the **54
+  disagreements**, where the model is right **42 times**. The relative gain looks modest because it
+  only materialises on 11 % of cases.
+- **India 2007** — the blanket rule says Potatoes, which returns 1 298 \$/ha there. The model, seeing
+  that the local climate disfavours potatoes, says Cassava: **3 933 \$/ha actually observed**, the
+  best possible choice that year.
+- The model stays ~285 \$/ha below the theoretical ceiling — reaching it would mean knowing the
+  yields in advance.
+
+### 📈 Experiment tracking
+
+<div align="center">
+  <img src="docs/mlflow-runs.jpg" width="900"
+       alt="MLflow Runs view of the crop_yield_B experiment, listing each model twice, once under KFold and once under GroupKFold, sorted by mean RMSE" />
+  <br />
+  <em>Every family is logged twice — once under <code>KFold</code>, once under <code>GroupKFold</code>
+  — so the two protocols can be compared on identical runs rather than on memory.</em>
+</div>
+
+### 🚧 Known limitations
+
+<div align="center">
+  <img src="docs/error-by-crop.png" width="820"
+       alt="Per-crop error relative to that crop's median yield, ranging from 19 percent for plantains to 132 percent for sorghum" />
+  <br />
+  <em>The headline RMSE of 4.94 t/ha hides very uneven per-crop behaviour. Relative to each crop's
+  own median, the error runs from <b>19 %</b> (plantains) to <b>132 %</b> (sorghum) — where the error
+  exceeds the yield itself. The recommender compares crops against each other, which absorbs part of
+  this; a single absolute prediction on a low-yield crop should be read with caution.</em>
+</div>
+
+- The data **stops in 2013**. A tree-based model saturates at its last split: a prediction for 2026 is
+  identical to one for 2013. The real year is passed through with no trend correction, and the
+  interface carries a permanent notice.
+- The three input variables are **national aggregates**, not plot measurements. The sliders select a
+  reference profile.
+- The price/cost table is a documented **assumption**, adjustable on screen. The information lives in
+  the comparison between crops, not in the absolute dollar figures.
+
+## 🚀 Getting started
+
+### With Docker — recommended
+
+One command, both services:
 
 ```sh
 docker compose up --build
 ```
 
-| Service | Adresse |
+| Service | Address |
 |---|---|
 | Interface | <http://localhost:8501> |
 | API | <http://localhost:8000> |
-| Documentation interactive de l'API | <http://localhost:8000/docs> |
+| Interactive API docs | <http://localhost:8000/docs> |
 
-L'interface n'est lancée qu'une fois l'API déclarée saine — Compose attend que
-`/health` réponde, donc que le modèle soit chargé.
+The interface only starts once the API reports healthy — Compose waits for `/health`, and therefore
+for the model to be loaded.
 
-### Sans Docker
+### Without Docker
 
 ```sh
+git clone git@github.com:KL38/OC_P12_ML_MLOPS_Predict-Crops-rentability.git
+cd OC_P12_ML_MLOPS_Predict-Crops-rentability
 uv sync
 
 # terminal 1
@@ -157,7 +311,10 @@ uv run uvicorn src.api:app --reload
 uv run streamlit run app/app.py
 ```
 
-### L'API en ligne de commande
+The trained model (`models/model_B.joblib`, 217 KB) is versioned: nothing to download, nothing to
+retrain, to run the application.
+
+### The API from the command line
 
 ```sh
 curl -X POST http://localhost:8000/predict \
@@ -165,314 +322,102 @@ curl -X POST http://localhost:8000/predict \
   -d '{"pluie_mm": 1030, "temperature_c": 20.4, "pesticides_kg_ha": 0.9, "culture": "Maize"}'
 ```
 
-| Route | Méthode | Rôle |
+| Route | Method | Role |
 |---|---|---|
-| `/health` | GET | état du service, cultures connues, réserve à afficher |
-| `/predict` | POST | une culture → un rendement en t/ha |
-| `/recommend` | POST | un contexte → les dix cultures, classées |
+| `/health` | GET | service state, known crops, notice to display |
+| `/predict` | POST | one crop → one yield in t/ha |
+| `/recommend` | POST | one context → the ten crops, ranked |
 
-### Les tests
+### Tests
 
 ```sh
 uv run pytest tests -v
 ```
 
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+## ⚙️ CI pipeline
 
-## Pipeline CI/CD
-
-Un workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), dont l'état est le
-badge en haut de cette page.
-
-### Déclencheurs
-
-| Événement | Quand |
-|---|---|
-| `push` | sur `main` uniquement |
-| `pull_request` | sur toute branche |
-| `workflow_dispatch` | à la demande, depuis l'onglet Actions |
-
-### Les trois jobs
+One workflow, [`.github/workflows/ci.yml`](.github/workflows/ci.yml), whose state is the badge at the
+top of this page.
 
 ```mermaid
 flowchart LR
-    P(["push · PR · manuel"]) --> L["Lint et format"]
+    P(["push · PR · manual"]) --> L["Lint & format"]
     P --> T["Tests"]
-    L --> B["Image Docker"]
+    L --> B["Docker image"]
     T --> B
-    B --> V(["API interrogée pour de vrai"])
+    B --> V(["API queried for real"])
 ```
 
-| Job | Ce qu'il garantit |
+| Job | What it guarantees |
 |---|---|
-| **Lint & format** | aucune erreur ni code mort dans `src`, `tests`, `app` ; mise en forme uniforme |
-| **Tests** | 26 tests, dont la **portabilité de l'artefact** vérifiée dans un interpréteur neuf |
-| **Image Docker** | les deux images se construisent, la pile démarre, **et l'API prédit réellement** |
+| **Lint & format** | no errors and no dead code in `src`, `tests`, `app`; uniform formatting |
+| **Tests** | 26 tests, including **artefact portability** verified in a fresh interpreter |
+| **Docker image** | both images build, the stack starts, **and the API actually predicts** |
 
-`Lint` et `Tests` tournent **en parallèle**. `Image Docker` attend les
-deux pour ne pas construire une image à partir d'un code dont les tests échouent.
+`Lint` and `Tests` run **in parallel** — a lint failure and a test failure are two distinct pieces of
+information, and both are wanted from the same run. `Docker image` waits for both, so no image is
+built from code whose tests fail. The image job calls `/health`, which must return `"statut":"ok"`,
+then `/predict` for a yield; on failure it adds a conditional `docker compose logs` step.
 
-### Ce que le job d'image vérifie vraiment
+Triggers: `push` on `main`, `pull_request` on any branch, and `workflow_dispatch` on demand.
 
-Le job monte l'image, puis appelle
-l'API : `/health`, qui doit renvoyer `"statut":"ok"`, et `/predict` un rendement.
+Continuous **deployment** is **out of scope**, deliberately: the brief calls it "optional but
+strongly recommended", and the demonstration rests on `docker compose up`, which depends on no
+third-party service.
 
-### En cas d'échec
+## 📁 Repository layout
 
-Le workflow s'arrête au premier job rouge et GitHub notifie l'auteur du push. Le job
-d'image ajoute une étape `docker compose logs` conditionnée à l'échec.
-
-Le déploiement continu est **hors périmètre**, un choix assumé : le brief le qualifie
-d'« optionnel mais fortement recommandé », mais la démonstration repose sur
-`docker compose up`, qui ne dépend d'aucun service tiers.
-
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
-
-## Le modèle
-
-**HistGradientBoosting** entraîné sur `log(rendement)`, sélectionné parmi cinq familles de
-modèles au terme de 14 expérimentations suivies dans MLflow.
-
-### La validation groupée par pays plutôt que aléatoire
-
-Toute la modélisation repose sur une décision prise avant le premier entraînement :
-**le modèle ne doit pas apprendre les pays par cœur**. La pluviométrie est constante par
-pays sur 1990-2013 (η² = 100 %) et la température quasi (99,6 %) : le couple
-(pluie, température) **reconstitue le pays exactement**. Un même pays des deux côtés d'un
-découpage transforme l'évaluation en consultation de table.
-
-Deux outils, une seule raison : `GroupShuffleSplit` met 22 pays de test de côté en amont,
-`GroupKFold` garantit qu'aucun pays n'est à cheval sur deux plis pendant la validation
-croisée.
-
-**Le tableau ci-dessous ne compare que des scores de validation croisée**, tous mesurés sur
-les mêmes 87 pays d'entraînement, avec les mêmes hyperparamètres : seul le découpage des
-plis change.
-
-| Modèle | R² sous `GroupKFold` | R² sous `KFold` aléatoire | Écart |
-|---|---|---|---|
-| `DummyRegressor` — *témoin* | −0,164 | −0,160 | **+0,004** |
-| Ridge | 0,415 | 0,594 | +0,179 |
-| Lasso | 0,412 | 0,563 | +0,151 |
-| RandomForest | 0,480 | **0,932** | +0,452 |
-| CatBoost | 0,533 | 0,918 | +0,385 |
-| **HistGradientBoosting** | **0,566** | 0,889 | +0,323 |
-
-Le témoin rend la lecture indiscutable : un modèle qui n'apprend rien obtient le **même**
-score sous les deux protocoles (−0,164 contre −0,160). Les deux découpages sont donc d'égale
-difficulté, et tout l'écart des autres lignes est de la **mémorisation** — le modèle
-reconnaît des pays qu'il a déjà vus.
-
-Deux lectures s'imposent :
-
-- **Le classement s'inverse.** RandomForest est premier en aléatoire (0,932) et seulement
-  **troisième** en groupé (0,480) : une sélection en CV aléatoire aurait retenu le modèle
-  qui généralise le plus mal aux pays inconnus. HistGradientBoosting fait le trajet inverse.
-- **Plus un modèle est aléatoire, plus il mémorise.** +0,15 à +0,18 pour les linéaires,
-  +0,32 à +0,45 pour les arbres, +0,004 pour le témoin qui ne peut rien mémoriser.
-
-Annoncer un chiffre aléatoire aurait été plus flatteur et sans valeur : en production,
-l'utilisateur décrit une région que le modèle n'a jamais rencontrée. Tous les chiffres
-ci-dessous sont donc les chiffres groupés, les plus bas, et les seuls honnêtes.
-
-| | Valeur |
-|---|---|
-| Protocole de validation croisée | `GroupKFold(5)` **par pays** |
-| R² validation croisée — avant optimisation | 0,566 |
-| R² validation croisée — **après optimisation** | **0,595** |
-| R² test — 22 pays jamais vus | **0,627** |
-| RMSE test | **4,94 t/ha** |
-| MAE test | 2,85 t/ha |
-| Entraînement | 11 550 lignes, 87 pays, 1990-2013, 10 cultures |
-| Test | 2 821 lignes, 22 pays **jamais vus** |
-
-Les deux premières lignes sont des moyennes sur 5 plis de pays d'entraînement ; la
-troisième est un passage unique sur des pays mis de côté avant tout entraînement. Que le
-test (0,627) dépasse la validation croisée (0,595) tient à la variance d'échantillonnage :
-les 22 pays tirés sont un peu plus faciles que la moyenne des plis (±0,078 d'un pli à
-l'autre).
-
-### Ce qui pèse dans la prédiction
-
-Importance par permutation sur les 22 pays de test, en points de RMSLE perdus quand une
-colonne est remplacée par du bruit. Elle mesure si le modèle a **raison** de se servir
-d'une variable — pas s'il s'en sert.
-
-| Variable | Importance | σ (20 répétitions) | 
-|---|---|---|
-| Culture (`Item`) | **+0,709** | 0,010 |
-| Pesticides | +0,120 | 0,006 | 
-| Température | +0,033 | 0,002 | 
-| Année | +0,008 | 0,008 | 
-| Pluviométrie | −0,004 | 0,002 |
-
-- **La culture (`Item`) domine tout** : 0,71 point de RMSLE perdu, contre 0,12 pour les pesticides et 0,03 pour la température. C'est le η² = 53 % de l'EDA, retrouvé côté modèle.
-- **La pluviométrie n'apporte aucune précision sur un pays inconnu** : −0,004, c'est-à-dire zéro (le léger négatif est du bruit d'échantillonnage). Cohérent avec l'EDA : une seule valeur par pays, jamais de variation interne — le modèle l'a apprise comme **signature du pays**, pas comme variable agronomique, et une signature ne généralise pas. C'est la justification a posteriori du protocole groupé.
-- **Sensibilité n'est pas utilité — le faux paradoxe de l'app** : dans Streamlit, bouger le curseur pluviométrie déplace la prédiction. Normal : changer la pluie fait ressembler la saisie à un autre pays de l'entraînement, et le modèle applique le niveau de rendement mémorisé de ce « pays »-là. La sortie **bouge**, mais ces déplacements n'apportent aucune précision mesurable sur un pays jamais vu — c'est une limite assumée du modèle, pas un signal agronomique validé.
-- La pluviométrie reste pourtant dans le modèle servi : c'est une saisie utilisateur de `/recommend`, et son rôle **validé** est ailleurs — le filtre de domaine de validité s'appuie dessus pour bloquer les recommandations incohérentes, pas pour ajuster le chiffre prédit.
-- `Year` ne pèse presque rien (0,008) : cohérent avec la décision de transmettre l'année réelle sans correction — l'arbre sature sur son dernier seuil appris.
-
-Trois contrôles confirment la neutralité de la variable pluie :
-
-| Contrôle | Résultat |
-|---|---|
-| **Ablation** — réentraîner sans la pluviométrie | test R² 0,627 → 0,635 · CV groupé 0,595 → 0,567 · neutre |
-| **Desserrer le modèle** — 255 feuilles, L2 = 0,01 | test R² 0,627 → **0,552** · pluviométrie à −0,022 |
-| **Contraindre les interactions** — `interaction_cst` | test R² 0,627 → **0,313** |
-
-Les deux derniers méritent d'être soulignés : donner **plus** de capacité au modèle
-**aggrave** le problème, la capacité supplémentaire servant à mémoriser plus finement la
-correspondance pluviométrie → pays. Les hyperparamètres serrés retenus par la recherche ne
-sont pas une limite subie, ce sont la réponse correcte au protocole groupé par pays.
-
-### Ce que le modèle rapporte
-
-Un moteur de recommandation ne vaut que s'il bat un **conseil unique** — « semer partout la
-culture la plus rentable en général », qui ne demande aucun modèle. Les deux conseillers
-sont comparés sur les **488 situations** (pays, année) du jeu de test où plusieurs cultures
-ont réellement été observées, puis payés avec le profit **effectivement constaté** sur
-place. Le modèle n'est donc jamais jugé sur ses propres prédictions.
-
-| Conseil suivi | Profit réel moyen | Médiane |
-|---|---|---|
-| Conseil unique — la même culture partout | 2 263 \$/ha | 1 756 \$/ha |
-| **Modèle** — la culture au meilleur profit prédit localement | **2 344 \$/ha** | **1 910 \$/ha** |
-| Meilleur choix possible — repère théorique | 2 629 \$/ha | 2 029 \$/ha |
-
-> **Suivre le modèle rapporte +81 \$/ha, soit +3,6 %.** C'est le gain anticipé de
-> `/recommend`.
-
-- Le modèle désigne la meilleure culture dans **57 %** des situations, le conseil unique
-  dans 52 %.
-- Dans **9 situations sur 10 les deux conseils coïncident** : tout se joue sur les **54
-  désaccords**, où le modèle fait mieux **42 fois**. Le gain paraît modeste en relatif
-  parce qu'il ne se matérialise que sur 11 % des cas — mais il ne coûte rien à
-  l'agriculteur : c'est le même semis, décidé autrement.
-- **Inde 2007** — le conseil unique désigne Potatoes, qui rapporte 1 298 \$/ha sur place.
-  Le modèle, voyant que le climat local défavorise la pomme de terre, désigne Cassava :
-  **3 933 \$/ha réels**, le meilleur choix possible cette année-là.
-- Le modèle reste ~285 \$/ha sous l'optimum théorique — l'atteindre supposerait de
-  connaître les rendements à l'avance.
-
-Le classement est filtré **avant** d'être trié : une culture hors de son domaine observé
-est écartée, jamais silencieusement reléguée. Sans ce filtre, l'igname arriverait en tête
-de 77 % des situations alors qu'elle ne pousse que dans 57 % d'entre elles.
-
-### Limites connues
-
-- Les données s'arrêtent en **2013**. Un modèle à base d'arbres sature sur sa dernière
-  coupure : une prédiction pour 2026 est identique à celle de 2013. L'année réelle est
-  transmise sans correction de tendance, et l'interface affiche une réserve permanente.
-- Les trois variables d'entrée sont des **agrégats nationaux**, pas des mesures de
-  parcelle. Les curseurs sélectionnent un profil de référence.
-- La table prix/coûts est une **hypothèse** documentée, ajustable à l'écran. C'est la
-  comparaison entre cultures qui porte l'information, pas la valeur absolue en dollars.
-
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
-
-## Structure du dépôt
-
-```
-├─ src/                     # partagé entre le notebook et l'API
+```text
+├─ src/                      # shared between the notebook and the API
 │  ├─ preprocessing.py       #   build_features + ClippedExp
 │  └─ api.py                 #   FastAPI, 3 routes
 ├─ app/
-│  ├─ app.py                 # Streamlit, 2 onglets, aucune logique ML
-│  ├─ prix_couts.csv         # prix et coûts par défaut, éditables à l'écran
+│  ├─ app.py                 # Streamlit, 2 tabs, no ML logic
+│  ├─ prix_couts.csv         # default prices and costs, editable on screen
 │  └─ Dockerfile
 ├─ models/
-│  ├─ model_B.joblib         # le modèle servi (versionné)
-│  └─ domaine_validite.json  # bornes climatiques par culture
+│  ├─ model_B.joblib         # the served model (versioned)
+│  └─ domaine_validite.json  # climate bounds per crop
 ├─ notebooks/
-│  ├─ df.csv                # dataset consolidé — la source de vérité (versionné)
-│  ├─ EDA *.ipynb           # exploration et fusion des trois sources
-│  └─ ML CYPD.ipynb         # benchmark, optimisation, MLflow, volet économique
-├─ tests/                   # 26 tests
-├─ .streamlit/config.toml   # thème, aux couleurs du logo
-├─ Dockerfile               # image de l'API, multi-étage
-└─ docker-compose.yml       # les deux services
+│  ├─ df.csv                 # consolidated dataset — the source of truth (versioned)
+│  ├─ EDA *.ipynb            # exploration and merge of the three sources
+│  └─ ML CYPD.ipynb          # benchmark, tuning, MLflow, economic study
+├─ docs/                     # figures used by this README
+├─ tests/                    # 26 tests
+├─ .streamlit/config.toml    # theme, matching the logo
+├─ Dockerfile                # API image, multi-stage
+└─ docker-compose.yml        # both services
 ```
 
-`src/preprocessing.py` est **partagé** entre le notebook d'entraînement et l'API : ce qui
-construit le modèle doit être exactement ce qui le sert, sinon les deux divergent — et la
-divergence ne se manifeste que par des prédictions fausses en production.
+## 📄 Data sources
 
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
+The **consolidated dataset** from Step 1 is versioned:
+[`notebooks/df.csv`](notebooks/df.csv) — 1.3 MB, 14 371 rows, 109 countries, 10 crops, 1990-2013.
+It is the source of truth for every later step, and it is enough to replay training.
 
-## Feuille de route
+The **three raw sources** are not — 117 MB, including a single 90 MB file. They only serve to replay
+the Step 1 merge, and are **not needed** to run the application or to retrain the model. Supplied
+with the assignment, to be placed as follows:
 
-- [x] Étape 1 — Exploration, fusion et préparation des deux jeux de données
-- [x] Étape 2 — Modélisation, optimisation et suivi MLflow
-- [x] Étape 3 — API FastAPI et conteneurisation
-- [x] Étape 4 — Interface Streamlit
-- [x] Étape 5 — Tests et build automatisés
-
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
-
-## Contact
-
-Kevin L — [github.com/KL38](https://github.com/KL38)
-
-Projet réalisé dans le cadre du parcours **Data Scientist / Machine Learning
-Engineer** d'OpenClassrooms — mission « Concevez un système de recommandation avec
-intégration de données multi-sources ».
-
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
-
-## Sources et remerciements
-
-### Les jeux de données
-
-Le **dataset consolidé** issu de l'Étape 1 est versionné : [`notebooks/df.csv`](notebooks/df.csv),
-1,3 Mo, 14 371 lignes, 109 pays, 10 cultures, 1990-2013. C'est la source de vérité des
-étapes suivantes, et elle suffit à rejouer l'entraînement.
-
-Les **trois sources brutes**, elles, ne le sont pas — 117 Mo, dont un fichier de 90 Mo à
-lui seul. Elles ne servent qu'à rejouer la fusion de l'Étape 1, et ne sont **pas
-nécessaires** pour lancer l'application ni pour réentraîner le modèle.
-
-Fournies avec l'énoncé de la mission, à replacer selon cette arborescence :
-
-```
+```text
 data/
 ├─ Agriculture Crop Yield/
-│  └─ crop_yield.csv                     # rendements par culture et par région
+│  └─ crop_yield.csv                     # yields by crop and region
 ├─ Crop Yield Prediction Dataset/
-│  ├─ pesticides.csv                     # usage de pesticides, en tonnes
-│  ├─ rainfall.csv                       # pluviométrie annuelle
-│  ├─ temp.csv                           # température moyenne
-│  └─ yield.csv, yield_df.csv            # rendements FAO
+│  ├─ pesticides.csv                     # pesticide use, in tonnes
+│  ├─ rainfall.csv                       # annual rainfall
+│  ├─ temp.csv                           # mean temperature
+│  └─ yield.csv, yield_df.csv            # FAO yields
 └─ LandUse/
-   └─ Inputs_LandUse_E_All_Data*.csv     # FAO — surfaces agricoles
+   └─ Inputs_LandUse_E_All_Data*.csv     # FAO — agricultural land area
 ```
 
-La troisième source sert à ramener les pesticides d'un volume national en tonnes à une
-**intensité en kg/ha**, seule forme comparable d'un pays à l'autre.
+The third source brings pesticides from a national volume in tonnes down to an **intensity in
+kg/ha**, the only form comparable across countries. Land-area data courtesy of
+[FAOSTAT](https://www.fao.org/faostat/).
 
-### Remerciements
+> [!NOTE]
+> Academic project, produced as part of the OpenClassrooms *Data Scientist / Machine Learning
+> Engineer* path. The application interface is in French, its intended audience.
 
-* [Best-README-Template](https://github.com/othneildrew/Best-README-Template) — structure de ce document
-* [FAOSTAT](https://www.fao.org/faostat/) — données de surfaces agricoles
-
-<p align="right">(<a href="#readme-top">retour en haut</a>)</p>
-
-[//]: # (Badge natif de GitHub et non shields.io : le dépôt est privé, et shields.io)
-[//]: # (interroge l'API publique — il répondrait « repo or workflow not found ». GitHub,)
-[//]: # (lui, sert le badge avec la session du lecteur, donc il s'affiche pour qui a accès.)
-[//]: # (À rebasculer sur shields.io si le dépôt passe public, pour un style homogène.)
-[ci-shield]: https://github.com/KL38/OC_P12/actions/workflows/ci.yml/badge.svg?branch=main
-[ci-url]: https://github.com/KL38/OC_P12/actions/workflows/ci.yml
-[python-shield]: https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white
-[python-url]: https://www.python.org/
-[fastapi-shield]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
-[fastapi-url]: https://fastapi.tiangolo.com/
-[streamlit-shield]: https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white
-[streamlit-url]: https://streamlit.io/
-[sklearn-shield]: https://img.shields.io/badge/scikit--learn-F7931E?style=for-the-badge&logo=scikitlearn&logoColor=white
-[sklearn-url]: https://scikit-learn.org/
-[mlflow-shield]: https://img.shields.io/badge/MLflow-0194E2?style=for-the-badge&logo=mlflow&logoColor=white
-[mlflow-url]: https://mlflow.org/
-[docker-shield]: https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white
-[docker-url]: https://www.docker.com/
-[uv-shield]: https://img.shields.io/badge/uv-DE5FE9?style=for-the-badge&logo=uv&logoColor=white
-[uv-url]: https://docs.astral.sh/uv/
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
